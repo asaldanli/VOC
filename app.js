@@ -311,18 +311,33 @@ async function syncFromFirebase() {
     if (!db || !cloudRef) throw new Error("Firebase is not available");
     const snap = await cloudRef.once("value");
     const remote = snap.val();
-    const hadRemoteData = Boolean(remote?.data || remote?.vocabulary || remote?.progress || remote?.daily);
-    if (remote?.data) {
-      mergeBackupData(remote.data);
-    } else if (remote?.vocabulary || remote?.progress || remote?.daily) {
-      mergeBackupData(remote);
+    const remotePayload = remote?.data || (remote?.vocabulary ? remote : null);
+    const hadRemoteData = Boolean(remotePayload?.vocabulary?.length || Object.keys(remotePayload?.progress || {}).length);
+
+    const localVocabCount = vocabulary.length;
+    const localProgressCount = Object.keys(progress).length;
+
+    if (hadRemoteData) {
+      // Remote data exists: always merge remote INTO local (remote wins on conflicts)
+      mergeBackupData(remotePayload);
+      saveStudyData({ sync: false });
+      attachCloudListener();
+      // Only write back to Firebase if local had additional data not present in remote
+      if (localVocabCount > 0 || localProgressCount > 0) {
+        await saveToFirebase();
+      } else {
+        updateSyncStatus("Cloud Sync: Guncel");
+      }
+    } else {
+      // No remote data: upload local data if any
+      saveStudyData({ sync: false });
+      attachCloudListener();
+      if (hasStudyData()) {
+        await saveToFirebase();
+      } else {
+        updateSyncStatus("Cloud Sync: Guncel");
+      }
     }
-    saveStudyData({ sync: false });
-    attachCloudListener();
-    if (hadRemoteData || hasStudyData()) {
-      await saveToFirebase();
-    }
-    updateSyncStatus("Cloud Sync: Guncel");
   } catch {
     updateSyncStatus("Cloud Sync: Hata");
   } finally {
@@ -336,9 +351,10 @@ function attachCloudListener() {
   cloudRef.on("value", (snap) => {
     if (applyingRemoteData) return;
     const remote = snap.val();
-    const remoteData = remote?.data || remote;
-    if (!remoteData || (!remoteData.vocabulary && !remoteData.progress && !remoteData.daily)) return;
+    const remoteData = remote?.data || (remote?.vocabulary ? remote : null);
+    if (!remoteData || (!remoteData.vocabulary?.length && !Object.keys(remoteData.progress || {}).length && !Object.keys(remoteData.daily || {}).length)) return;
 
+    // Remote has real data: merge it in, but don't write back (avoid overwrite loop)
     applyingRemoteData = true;
     mergeBackupData(remoteData);
     saveStudyData({ sync: false });
@@ -410,6 +426,9 @@ function importProgressBackup(jsonText, fileName) {
 }
 
 function mergeBackupData(backup) {
+  // Safety guard: never merge an empty or invalid payload
+  if (!backup || !Array.isArray(backup.vocabulary) || backup.vocabulary.length === 0) return;
+
   const existingById = new Map(vocabulary.map((item) => [item.id, item]));
   const existingWordToId = new Map(vocabulary.map((item) => [normalizeWordKey(item.word), item.id]));
 
