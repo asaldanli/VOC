@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#151515">
     <title>Kelime Studio</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="logo.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="logo.svg">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -23,6 +26,7 @@
           &#350;ifre
           <input id="passwordInput" type="password" autocomplete="current-password" required>
         </label>
+        <button class="ghost-button" id="loginThemeButton" type="button">Gece Modu</button>
         <button type="submit">Giri&#351; Yap</button>
         <p id="loginMessage" class="status-line"></p>
       </form>
@@ -38,6 +42,7 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <button class="ghost-button" id="themeButton" type="button">Gece Modu</button>
           <button class="ghost-button" id="logoutButton" type="button">&#199;&#305;k&#305;&#351;</button>
           <button class="ghost-button" id="exportButton" type="button">D&#305;&#351;a Aktar</button>
           <button class="danger-button" id="resetButton" type="button">S&#305;f&#305;rla</button>

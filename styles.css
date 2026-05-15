@@ -7,6 +7,12 @@
   --surface: #ffffff;
   --surface-2: #f8faf9;
   --line: #dde4e0;
+  --primary: #151515;
+  --primary-text: #ffffff;
+  --login-overlay: rgba(243, 246, 244, 0.94);
+  --import-bg: #151515;
+  --import-text: #ffffff;
+  --nav-bg: rgba(255, 255, 255, 0.72);
   --teal: #20a891;
   --teal-dark: #087966;
   --blue: #315fbc;
@@ -14,6 +20,30 @@
   --yellow: #d99a18;
   --shadow: 0 20px 60px rgba(21, 21, 21, 0.10);
   --soft-shadow: 0 10px 28px rgba(21, 21, 21, 0.08);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #f4f7f5;
+  --text: #e6ece9;
+  --muted: #a8b4ae;
+  --page: #0f1414;
+  --surface: #182020;
+  --surface-2: #111818;
+  --line: #2b3836;
+  --primary: #f4f7f5;
+  --primary-text: #101414;
+  --login-overlay: rgba(15, 20, 20, 0.94);
+  --import-bg: #1f2a29;
+  --import-text: #f4f7f5;
+  --nav-bg: rgba(24, 32, 32, 0.96);
+  --teal: #27c8ad;
+  --teal-dark: #67decf;
+  --blue: #7ca2ff;
+  --red: #ff735f;
+  --yellow: #f0b53a;
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  --soft-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
 }
 
 * {
@@ -55,10 +85,10 @@ select {
 
 button {
   align-items: center;
-  background: var(--ink);
-  border: 1px solid var(--ink);
+  background: var(--primary);
+  border: 1px solid var(--primary);
   border-radius: 8px;
-  color: #fff;
+  color: var(--primary-text);
   cursor: pointer;
   display: inline-flex;
   font-weight: 800;
@@ -142,7 +172,7 @@ h2 {
 
 .login-screen {
   align-items: center;
-  background: rgba(243, 246, 244, 0.94);
+  background: var(--login-overlay);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -159,6 +189,8 @@ h2 {
   display: grid;
   gap: 16px;
   max-width: 420px;
+  max-height: calc(100vh - 40px);
+  overflow: auto;
   padding: 22px;
   width: 100%;
 }
@@ -208,7 +240,6 @@ h2 {
   font-weight: 900;
   letter-spacing: 0;
   margin: 0 0 5px;
-  text-transform: uppercase;
 }
 
 .topbar-actions,
@@ -238,10 +269,10 @@ h2 {
 
 .import-band {
   align-items: center;
-  background: var(--ink);
+  background: var(--import-bg);
   border-radius: 8px;
   box-shadow: var(--shadow);
-  color: #fff;
+  color: var(--import-text);
   display: grid;
   gap: 16px;
   grid-template-columns: minmax(170px, 0.34fr) minmax(0, 1fr);
@@ -278,6 +309,13 @@ h2 {
   padding: 0 14px;
 }
 
+:root[data-theme="dark"] a.template-link,
+:root[data-theme="dark"] .file-control {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--text);
+}
+
 .file-control input {
   display: none;
 }
@@ -301,7 +339,7 @@ h2 {
 }
 
 .view-tabs {
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--nav-bg);
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--soft-shadow);
@@ -319,9 +357,9 @@ h2 {
 
 .tab-button.active,
 .mode-button.active {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
 }
 
 .view {
@@ -526,7 +564,6 @@ h2 {
   color: var(--teal-dark);
   font-weight: 900;
   margin-bottom: 20px;
-  text-transform: uppercase;
 }
 
 .flashcard h2 {
@@ -540,6 +577,23 @@ h2 {
 .flashcard.swiping-right {
   border-color: var(--teal);
   box-shadow: 0 20px 60px rgba(32, 168, 145, 0.22);
+}
+
+:root[data-theme="dark"] .example {
+  background: #17243f;
+  color: #cdd8f7;
+}
+
+:root[data-theme="dark"] .option-grid button.correct,
+:root[data-theme="dark"] .match-card.correct,
+:root[data-theme="dark"] .match-card.selected,
+:root[data-theme="dark"] .drop-zone.drag-over {
+  background: #12362f;
+}
+
+:root[data-theme="dark"] .option-grid button.wrong,
+:root[data-theme="dark"] .match-card.wrong {
+  background: #3d1c18;
 }
 
 .flashcard.swiping-left {
@@ -765,13 +819,18 @@ h2 {
 
 @media (max-width: 860px) {
   .app-shell {
-    padding: 14px 12px 96px;
+    padding: 12px 10px 138px;
   }
 
   .topbar {
     align-items: flex-start;
     flex-direction: column;
     padding: 14px;
+  }
+
+  .login-screen {
+    align-items: flex-start;
+    overflow: auto;
   }
 
   .brand-mark {
@@ -785,7 +844,7 @@ h2 {
 
   .topbar-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
   }
 
@@ -811,14 +870,14 @@ h2 {
   }
 
   .view-tabs {
-    background: rgba(255, 255, 255, 0.96);
+    background: var(--nav-bg);
     border-color: rgba(21, 21, 21, 0.12);
     border-radius: 8px 8px 0 0;
     bottom: 0;
     box-shadow: 0 -12px 30px rgba(21, 21, 21, 0.12);
     display: grid;
     gap: 4px;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     left: 0;
     margin: 0;
     overflow: visible;
@@ -830,8 +889,8 @@ h2 {
 
   .tab-button {
     border-radius: 8px;
-    font-size: 0.78rem;
-    min-height: 50px;
+    font-size: 0.86rem;
+    min-height: 44px;
     min-width: 0;
     padding: 0 4px;
   }
@@ -874,7 +933,7 @@ h2 {
   }
 
   .flashcard {
-    min-height: 390px;
+    min-height: 360px;
     padding: 22px 18px 18px;
   }
 
@@ -884,6 +943,13 @@ h2 {
 
   .word-toolbar select {
     max-width: none;
+  }
+}
+
+@media (min-width: 861px) {
+  .topbar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 }
 
@@ -912,6 +978,6 @@ h2 {
   }
 
   .tab-button {
-    font-size: 0.7rem;
+    font-size: 0.78rem;
   }
 }

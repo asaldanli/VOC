@@ -3,6 +3,7 @@ const STORAGE_KEYS = {
   progress: "yds-vocab-progress",
   daily: "yds-vocab-daily",
   auth: "yds-vocab-auth",
+  theme: "yds-vocab-theme",
 };
 
 const AUTH = {
@@ -39,12 +40,15 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
+  applyTheme();
   applyAuthState();
   renderAll();
 });
 
 function bindEvents() {
   $("#loginForm").addEventListener("submit", handleLogin);
+  $("#loginThemeButton").addEventListener("click", toggleTheme);
+  $("#themeButton").addEventListener("click", toggleTheme);
   $("#logoutButton").addEventListener("click", logout);
   $$(".tab-button").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
@@ -98,6 +102,7 @@ function handleLogin(event) {
 }
 
 function logout() {
+  downloadProgressBackup("logout-backup");
   localStorage.removeItem(STORAGE_KEYS.auth);
   applyAuthState();
 }
@@ -106,6 +111,23 @@ function applyAuthState() {
   const isLoggedIn = localStorage.getItem(STORAGE_KEYS.auth) === "true";
   $("#loginScreen").classList.toggle("hidden", isLoggedIn);
   document.body.classList.toggle("is-locked", !isLoggedIn);
+}
+
+function toggleTheme() {
+  const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  localStorage.setItem(STORAGE_KEYS.theme, nextTheme);
+  applyTheme();
+}
+
+function applyTheme() {
+  const savedTheme = localStorage.getItem(STORAGE_KEYS.theme);
+  const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  const theme = savedTheme || (prefersDark ? "dark" : "light");
+  document.documentElement.dataset.theme = theme;
+  document.querySelector("meta[name='theme-color']")?.setAttribute("content", theme === "dark" ? "#0f1414" : "#151515");
+  const label = theme === "dark" ? "Gunduz Modu" : "Gece Modu";
+  if ($("#themeButton")) $("#themeButton").textContent = label;
+  if ($("#loginThemeButton")) $("#loginThemeButton").textContent = label;
 }
 
 function loadJson(key, fallback) {
@@ -208,24 +230,30 @@ function importVocabulary(csvText, message) {
   })).filter((item) => item.word && item.englishMeaning);
 
   const existingById = new Map(vocabulary.map((item) => [item.id, item]));
+  const existingWordToId = new Map(vocabulary.map((item) => [normalizeWordKey(item.word), item.id]));
   let addedCount = 0;
   let updatedCount = 0;
 
   importedVocabulary.forEach((item) => {
-    if (existingById.has(item.id)) {
-      existingById.set(item.id, { ...existingById.get(item.id), ...item });
+    const wordKey = normalizeWordKey(item.word);
+    const existingId = existingById.has(item.id) ? item.id : existingWordToId.get(wordKey);
+
+    if (existingId) {
+      existingById.set(existingId, { ...existingById.get(existingId), ...item, id: existingId });
       updatedCount += 1;
     } else {
       existingById.set(item.id, item);
+      existingWordToId.set(wordKey, item.id);
       addedCount += 1;
     }
 
-    if (!progress[item.id]) {
-      progress[item.id] = createProgress(item.id);
+    const progressId = existingId || item.id;
+    if (!progress[progressId]) {
+      progress[progressId] = createProgress(progressId);
     }
   });
 
-  vocabulary = Array.from(existingById.values());
+  vocabulary = dedupeVocabularyByWord(Array.from(existingById.values()));
 
   saveJson(STORAGE_KEYS.vocabulary, vocabulary);
   saveJson(STORAGE_KEYS.progress, progress);
@@ -235,6 +263,56 @@ function importVocabulary(csvText, message) {
 
 function cleanCell(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeWordKey(value) {
+  return String(value || "").trim().toLocaleLowerCase("tr-TR");
+}
+
+function dedupeVocabularyByWord(items) {
+  const seen = new Map();
+
+  items.forEach((item) => {
+    const wordKey = normalizeWordKey(item.word);
+    const existing = seen.get(wordKey);
+
+    if (!existing) {
+      seen.set(wordKey, item);
+      return;
+    }
+
+    const existingProgress = progress[existing.id] || createProgress(existing.id);
+    const duplicateProgress = progress[item.id] || createProgress(item.id);
+    progress[existing.id] = mergeProgress(existingProgress, duplicateProgress, existing.id);
+    delete progress[item.id];
+    seen.set(wordKey, {
+      ...existing,
+      ...item,
+      id: existing.id,
+    });
+  });
+
+  return Array.from(seen.values());
+}
+
+function mergeProgress(first, second, wordId) {
+  return {
+    wordId,
+    status: statusRank(second.status) > statusRank(first.status) ? second.status : first.status,
+    correctCount: Math.max(first.correctCount || 0, second.correctCount || 0),
+    wrongCount: Math.max(first.wrongCount || 0, second.wrongCount || 0),
+    lastSeenAt: [first.lastSeenAt, second.lastSeenAt].filter(Boolean).sort().pop() || null,
+    nextReviewAt: [first.nextReviewAt, second.nextReviewAt].filter(Boolean).sort()[0] || todayKey(),
+  };
+}
+
+function statusRank(status) {
+  return {
+    new: 0,
+    learning: 1,
+    known: 2,
+    difficult: 3,
+  }[status] || 0;
 }
 
 function createProgress(wordId) {
@@ -910,6 +988,10 @@ function resetAll() {
 }
 
 function exportProgress() {
+  downloadProgressBackup("manual-backup");
+}
+
+function downloadProgressBackup(prefix) {
   const payload = {
     exportedAt: new Date().toISOString(),
     vocabulary,
@@ -920,7 +1002,7 @@ function exportProgress() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `yds-progress-${todayKey()}.json`;
+  link.download = `yds-${prefix}-${todayKey()}.json`;
   link.click();
   URL.revokeObjectURL(url);
 }

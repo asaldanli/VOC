@@ -8,6 +8,9 @@ Personal vocabulary study prototype for YDS-style English practice.
 - Supports the expected columns: `No`, `Sözcük`, `Türkçe Karşılığı`.
 - Includes a downloadable `template.xlsx` file for preparing vocabulary data.
 - Adds a simple login gate with username `saldanli`.
+- Supports light and dark color modes.
+- Downloads a JSON backup whenever you log out.
+- Includes mobile shortcut metadata and an app icon through `manifest.webmanifest`.
 - Provides flashcards, quiz mode, matching mode, word list, and progress dashboard.
 - Keeps existing vocabulary and progress when new CSV/Sheets data is imported.
 - Supports tap-to-reveal and swipe gestures in flashcards.
