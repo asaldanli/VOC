@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "yds-vocabulary": {
+      "saldanli": {
+        ".read": true,
+        ".write": true
+      }
+    }
+  }
+}

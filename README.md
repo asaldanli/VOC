@@ -1,78 +1,80 @@
 # YDS Vocabulary Studio
 
-Personal vocabulary study prototype for YDS-style English practice.
+Personal YDS vocabulary practice app with flashcards, quiz, matching, analytics, mobile support, and optional Firebase sync.
 
 ## What It Does
 
-- Imports vocabulary from CSV.
-- Supports the expected columns: `No`, `Sözcük`, `Türkçe Karşılığı`.
-- Includes a downloadable `template.xlsx` file for preparing vocabulary data.
-- Adds a simple login gate with username `saldanli`.
-- Supports light and dark color modes.
-- Downloads a JSON backup whenever you log out.
-- Can import a downloaded JSON backup from another browser/device.
-- Keeps a local internal snapshot so normal GitHub Pages code updates do not remove study progress.
-- Requires the login password before `Sıfırla` can delete vocabulary and progress.
+- Imports vocabulary from Excel/CSV style data.
+- Expected columns: `No`, `Sozcuk`, `Turkce Karsiligi`.
+- Includes `template.xlsx` for preparing vocabulary data.
+- Adds a simple login gate with username `saldanli` and password `21542154`.
+- Supports light and dark modes.
+- Supports Firebase Realtime Database sync when `config.js` is configured.
+- Keeps local data as a backup so normal GitHub Pages code updates do not remove study progress.
+- Keeps existing vocabulary when new data is imported and skips duplicate words.
+- Requires the login password before `Sifirla` can delete vocabulary and progress.
+- Provides flashcards, quiz mode, matching mode, word list, and detailed progress dashboard.
+- Shows separate accuracy for Kartlar, Quiz, and Eslestir.
 - Includes mobile shortcut metadata and an app icon through `manifest.webmanifest`.
-- Provides flashcards, quiz mode, matching mode, word list, and progress dashboard.
-- Keeps existing vocabulary and progress when new CSV/Sheets data is imported.
-- Supports tap-to-reveal and swipe gestures in flashcards.
-- Moves quiz questions forward automatically after an answer.
-- Supports drag-and-drop matching with automatic next sets.
-- Adds daily, weekly, and monthly analysis.
-- Shows separate accuracy for Kartlar, Quiz, and Eşleştir.
-- Saves vocabulary and study progress in the browser.
-- Requests persistent browser storage when supported.
-- Repeats difficult or due words with a simple spaced repetition schedule.
-- Includes a mobile-first layout with bottom navigation for phone use.
 
-## How to Use
+## How To Use
 
-Open `index.html` in a browser.
+Open `index.html` in a browser, or publish the folder with GitHub Pages.
 
-Then choose one of these import methods:
+Import options:
 
-- Use `Load Sample` to test the app quickly.
-- Upload a CSV file exported from Excel or Google Sheets.
+- Use the included `template.xlsx`.
+- Upload an Excel file prepared with the same columns.
 - Paste a published Google Sheets CSV URL.
 
-## Google Sheets CSV Format
+## Firebase Cloud Sync Setup
 
-Keep the first row as headers:
+This app is static, so cross-device sync needs an online database. The working older project you shared used Firebase Realtime Database; this version now uses the same pattern.
 
-```csv
-No,Sözcük,Türkçe Karşılığı
-1,immature,olgunlaşmamış
+1. Create or open a Firebase project.
+2. Open `Build > Realtime Database`.
+3. Create a database.
+4. Open the database `Rules` tab.
+5. Paste the contents of `firebase-rules.json` and publish.
+6. Open `Project settings > General > Your apps`.
+7. Create a Web App if needed.
+8. Copy the Firebase config values.
+9. Copy `config.example.js` as `config.js`.
+10. Fill `config.js` like this:
+
+```js
+window.KELIME_STUDIO_CLOUD = {
+  firebaseConfig: {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+    appId: "YOUR_APP_ID",
+  },
+  databasePath: "yds-vocabulary/saldanli",
+};
 ```
 
-For Google Sheets:
+11. Upload `config.js` to GitHub once.
 
-1. Open the sheet.
-2. Use `File > Share > Publish to web`.
-3. Choose CSV output.
-4. Paste the CSV link into the app.
+For future app updates, keep your filled `config.js`. Do not replace it with `config.example.js`.
 
-## Current Storage
+## Important
 
-The app stores data locally in the browser with `localStorage`.
+The login screen is a personal-use gate, not bank-level security. Firebase rules in this starter setup allow read/write only under `yds-vocabulary/saldanli`, which is suitable for a private personal GitHub Pages app but should not be used for public multi-user products.
 
-This means:
+## Files To Upload
 
-- No account is needed.
-- No backend is needed.
-- Progress stays on the same browser/device.
-- Clearing browser storage deletes progress.
-- Updating the GitHub Pages files at the same site URL should not delete progress.
-- Changing device/browser does not automatically sync because this is a static GitHub Pages app.
-- To continue on mobile, upload the JSON backup downloaded from PC logout/export.
-- Automatic PC-to-mobile sync requires a backend database such as Supabase or Firebase.
+Upload these files to GitHub Pages:
 
-The login screen is a convenience gate for personal use. A static GitHub Pages app cannot securely authenticate users or automatically sync progress across different devices without a backend service.
+- `index.html`
+- `styles.css`
+- `app.js`
+- `template.xlsx`
+- `logo.svg`
+- `manifest.webmanifest`
+- `config.js` after filling Firebase values
 
-## Suggested Next Versions
-
-- Add Excel `.xlsx` import.
-- Convert to React + Vite.
-- Add IndexedDB through Dexie for larger datasets.
-- Add GitHub Pages deployment.
-- Add PWA install support.
+Keep `config.example.js`, `firebase-rules.json`, and this `README.md` in the repository for reference.

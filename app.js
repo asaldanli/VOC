@@ -35,6 +35,12 @@ let quizAdvanceTimer = null;
 let draggedMatchId = null;
 let currentMatchIds = new Set();
 let cardPointer = null;
+let cloudSaveTimer = null;
+let cloudSyncInProgress = false;
+let cloudDb = null;
+let cloudRef = null;
+let cloudListenerAttached = false;
+let applyingRemoteData = false;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -46,6 +52,9 @@ document.addEventListener("DOMContentLoaded", () => {
   applyTheme();
   applyAuthState();
   renderAll();
+  if (localStorage.getItem(STORAGE_KEYS.auth) === "true") {
+    syncFromCloud().then(renderAll);
+  }
 });
 
 async function requestPersistentStorage() {
@@ -102,7 +111,7 @@ function bindEvents() {
   document.addEventListener("keydown", handleKeyboardShortcuts);
 }
 
-function handleLogin(event) {
+async function handleLogin(event) {
   event.preventDefault();
   const username = $("#usernameInput").value.trim();
   const password = $("#passwordInput").value;
@@ -110,7 +119,9 @@ function handleLogin(event) {
   if (username === AUTH.username && password === AUTH.password) {
     localStorage.setItem(STORAGE_KEYS.auth, "true");
     $("#loginMessage").textContent = "";
+    await syncFromCloud();
     applyAuthState();
+    renderAll();
     return;
   }
 
@@ -127,6 +138,7 @@ function applyAuthState() {
   const isLoggedIn = localStorage.getItem(STORAGE_KEYS.auth) === "true";
   $("#loginScreen").classList.toggle("hidden", isLoggedIn);
   document.body.classList.toggle("is-locked", !isLoggedIn);
+  updateSyncStatus();
 }
 
 function toggleTheme() {
@@ -183,7 +195,8 @@ function saveJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-function saveStudyData() {
+function saveStudyData(options = {}) {
+  const shouldSync = options.sync !== false;
   migrateDailyStats();
   saveJson(STORAGE_KEYS.vocabulary, vocabulary);
   saveJson(STORAGE_KEYS.progress, progress);
@@ -194,6 +207,160 @@ function saveStudyData() {
     progress,
     daily,
   });
+  if (shouldSync) queueCloudSave();
+}
+
+function getStudyPayload() {
+  migrateDailyStats();
+  return {
+    version: 2,
+    savedAt: new Date().toISOString(),
+    vocabulary,
+    progress,
+    daily,
+  };
+}
+
+function getCloudConfig() {
+  const config = window.KELIME_STUDIO_CLOUD || {};
+  const firebaseConfig = config.firebaseConfig || null;
+  const databasePath = String(config.databasePath || `yds-vocabulary/${AUTH.username}`).replace(/^\/+|\/+$/g, "");
+  const hasFirebase = typeof window.firebase !== "undefined" && firebaseConfig;
+  const isConfigured = Boolean(
+    hasFirebase &&
+      firebaseConfig.apiKey &&
+      firebaseConfig.databaseURL &&
+      firebaseConfig.projectId
+  );
+  return { firebaseConfig, databasePath, isConfigured };
+}
+
+function initCloud() {
+  const config = getCloudConfig();
+  if (!config.isConfigured) return null;
+  if (cloudDb && cloudRef) return cloudDb;
+
+  try {
+    let app;
+    try {
+      app = firebase.app("yds-vocabulary-studio");
+    } catch {
+      app = firebase.initializeApp(config.firebaseConfig, "yds-vocabulary-studio");
+    }
+    cloudDb = firebase.database(app);
+    cloudRef = cloudDb.ref(config.databasePath);
+    cloudDb.ref(".info/connected").on("value", (snap) => {
+      if (!snap.val()) updateSyncStatus("Cloud Sync: Baglanti yok");
+    });
+    return cloudDb;
+  } catch {
+    updateSyncStatus("Cloud Sync: Hata");
+    return null;
+  }
+}
+
+function updateSyncStatus(message) {
+  const status = $("#syncStatus");
+  if (!status) return;
+  if (!message) {
+    message = getCloudConfig().isConfigured ? "Cloud Sync: Acik" : "Cloud Sync: Kapali";
+  }
+  status.textContent = message;
+}
+
+function queueCloudSave() {
+  if (localStorage.getItem(STORAGE_KEYS.auth) !== "true") return;
+  if (!getCloudConfig().isConfigured) {
+    updateSyncStatus();
+    return;
+  }
+  window.clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = window.setTimeout(() => {
+    saveToCloud();
+  }, 500);
+}
+
+async function syncFromFirebase() {
+  const config = getCloudConfig();
+  if (!config.isConfigured) {
+    updateSyncStatus("Cloud Sync: Kapali");
+    saveStudyData({ sync: false });
+    return;
+  }
+
+  if (cloudSyncInProgress) return;
+  cloudSyncInProgress = true;
+  updateSyncStatus("Cloud Sync: Yukleniyor");
+
+  try {
+    const db = initCloud();
+    if (!db || !cloudRef) throw new Error("Firebase is not available");
+    const snap = await cloudRef.once("value");
+    const remote = snap.val();
+    if (remote?.data) {
+      mergeBackupData(remote.data);
+    } else if (remote?.vocabulary || remote?.progress || remote?.daily) {
+      mergeBackupData(remote);
+    }
+    saveStudyData({ sync: false });
+    attachCloudListener();
+    await saveToFirebase();
+    updateSyncStatus("Cloud Sync: Guncel");
+  } catch {
+    updateSyncStatus("Cloud Sync: Hata");
+  } finally {
+    cloudSyncInProgress = false;
+  }
+}
+
+function attachCloudListener() {
+  if (cloudListenerAttached || !cloudRef) return;
+  cloudListenerAttached = true;
+  cloudRef.on("value", (snap) => {
+    if (applyingRemoteData) return;
+    const remote = snap.val();
+    const remoteData = remote?.data || remote;
+    if (!remoteData || (!remoteData.vocabulary && !remoteData.progress && !remoteData.daily)) return;
+
+    applyingRemoteData = true;
+    mergeBackupData(remoteData);
+    saveStudyData({ sync: false });
+    renderAll();
+    applyingRemoteData = false;
+    updateSyncStatus("Cloud Sync: Guncel");
+  }, () => {
+    updateSyncStatus("Cloud Sync: Hata");
+  });
+}
+
+async function saveToFirebase() {
+  const config = getCloudConfig();
+  if (!config.isConfigured || localStorage.getItem(STORAGE_KEYS.auth) !== "true") return;
+  const db = initCloud();
+  if (!db || !cloudRef) return;
+  updateSyncStatus("Cloud Sync: Kaydediliyor");
+
+  try {
+    applyingRemoteData = true;
+    await cloudRef.update({
+      username: AUTH.username,
+      data: getStudyPayload(),
+      updatedAt: firebase.database.ServerValue.TIMESTAMP,
+    });
+    applyingRemoteData = false;
+    updateSyncStatus("Cloud Sync: Guncel");
+  } catch {
+    applyingRemoteData = false;
+    updateSyncStatus("Cloud Sync: Hata");
+  }
+}
+
+async function syncFromCloud() {
+  return syncFromFirebase();
+}
+
+async function saveToCloud() {
+  return saveToFirebase();
 }
 
 function restoreStudyDataIfNeeded() {
@@ -205,7 +372,7 @@ function restoreStudyDataIfNeeded() {
   }
 
   migrateDailyStats();
-  saveStudyData();
+  saveStudyData({ sync: false });
 }
 
 function importProgressBackup(jsonText, fileName) {
