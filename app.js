@@ -2,6 +2,7 @@ const STORAGE_KEYS = {
   vocabulary: "yds-vocab-items",
   progress: "yds-vocab-progress",
   daily: "yds-vocab-daily",
+  snapshot: "yds-vocab-study-snapshot",
   auth: "yds-vocab-auth",
   theme: "yds-vocab-theme",
 };
@@ -40,6 +41,7 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
+  restoreStudyDataIfNeeded();
   applyTheme();
   applyAuthState();
   renderAll();
@@ -47,7 +49,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function bindEvents() {
   $("#loginForm").addEventListener("submit", handleLogin);
-  $("#loginThemeButton").addEventListener("click", toggleTheme);
   $("#themeButton").addEventListener("click", toggleTheme);
   $("#logoutButton").addEventListener("click", logout);
   $$(".tab-button").forEach((button) => {
@@ -84,6 +85,7 @@ function bindEvents() {
   $("#newMatchButton").addEventListener("click", newMatchSet);
   $("#searchInput").addEventListener("input", renderWords);
   $("#statusFilter").addEventListener("change", renderWords);
+  document.addEventListener("keydown", handleKeyboardShortcuts);
 }
 
 function handleLogin(event) {
@@ -127,7 +129,31 @@ function applyTheme() {
   document.querySelector("meta[name='theme-color']")?.setAttribute("content", theme === "dark" ? "#0f1414" : "#151515");
   const label = theme === "dark" ? "Gunduz Modu" : "Gece Modu";
   if ($("#themeButton")) $("#themeButton").textContent = label;
-  if ($("#loginThemeButton")) $("#loginThemeButton").textContent = label;
+}
+
+function handleKeyboardShortcuts(event) {
+  if (activeView !== "flashcards" || !currentCard) return;
+  if (event.target.matches("input, textarea, select")) return;
+
+  if (event.key === "ArrowRight") {
+    event.preventDefault();
+    animateKeyboardSwipe("right");
+  }
+
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    animateKeyboardSwipe("left");
+  }
+}
+
+function animateKeyboardSwipe(direction) {
+  const card = $("#flashcard");
+  const isRight = direction === "right";
+  card.classList.add(isRight ? "swiping-right" : "swiping-left");
+  card.style.transform = `translateX(${isRight ? 140 : -140}px) rotate(${isRight ? 6 : -6}deg)`;
+  window.setTimeout(() => {
+    answerCard(isRight);
+  }, 180);
 }
 
 function loadJson(key, fallback) {
@@ -141,6 +167,34 @@ function loadJson(key, fallback) {
 
 function saveJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function saveStudyData() {
+  saveJson(STORAGE_KEYS.vocabulary, vocabulary);
+  saveJson(STORAGE_KEYS.progress, progress);
+  saveJson(STORAGE_KEYS.daily, daily);
+  saveJson(STORAGE_KEYS.snapshot, {
+    savedAt: new Date().toISOString(),
+    vocabulary,
+    progress,
+    daily,
+  });
+}
+
+function restoreStudyDataIfNeeded() {
+  const hasStudyData = vocabulary.length > 0 || Object.keys(progress).length > 0 || Object.keys(daily).length > 0;
+  if (hasStudyData) {
+    saveStudyData();
+    return;
+  }
+
+  const snapshot = loadJson(STORAGE_KEYS.snapshot, null);
+  if (!snapshot) return;
+
+  vocabulary = Array.isArray(snapshot.vocabulary) ? snapshot.vocabulary : [];
+  progress = snapshot.progress && typeof snapshot.progress === "object" ? snapshot.progress : {};
+  daily = snapshot.daily && typeof snapshot.daily === "object" ? snapshot.daily : {};
+  saveStudyData();
 }
 
 function todayKey(offset = 0) {
@@ -255,8 +309,7 @@ function importVocabulary(csvText, message) {
 
   vocabulary = dedupeVocabularyByWord(Array.from(existingById.values()));
 
-  saveJson(STORAGE_KEYS.vocabulary, vocabulary);
-  saveJson(STORAGE_KEYS.progress, progress);
+  saveStudyData();
   setStatus(`${message} ${addedCount} yeni, ${updatedCount} guncel, toplam ${vocabulary.length} kelime.`);
   renderAll();
 }
@@ -509,7 +562,6 @@ function recordAnswer(wordId, isCorrect) {
   }
 
   progress[wordId] = itemProgress;
-  saveJson(STORAGE_KEYS.progress, progress);
   recordDaily(isCorrect);
 }
 
@@ -525,7 +577,7 @@ function recordDaily(isCorrect) {
   daily[key].studiedCount += 1;
   if (isCorrect) daily[key].correctCount += 1;
   else daily[key].wrongCount += 1;
-  saveJson(STORAGE_KEYS.daily, daily);
+  saveStudyData();
 }
 
 function nextQuiz() {
@@ -973,12 +1025,23 @@ function cssEscape(value) {
 }
 
 function resetAll() {
-  const confirmed = window.confirm("Bu tarayicidaki kelime ve ilerleme verileri silinsin mi?");
-  if (!confirmed) return;
+  const password = window.prompt("Tum kelime ve ilerleme verilerini silmek icin sifreyi girin:");
+  if (password === null) return;
+  if (password !== AUTH.password) {
+    window.alert("Sifre hatali. Veriler silinmedi.");
+    return;
+  }
+
+  downloadProgressBackup("before-reset");
   vocabulary = [];
   progress = {};
   daily = {};
-  Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
+  [
+    STORAGE_KEYS.vocabulary,
+    STORAGE_KEYS.progress,
+    STORAGE_KEYS.daily,
+    STORAGE_KEYS.snapshot,
+  ].forEach((key) => localStorage.removeItem(key));
   renderAll();
   updateCard(null);
   $("#quizOptions").innerHTML = "";
