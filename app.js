@@ -99,7 +99,15 @@ function bindEvents() {
   $("#fileInput").addEventListener("change", handleFileUpload);
   $("#urlForm").addEventListener("submit", handleUrlLoad);
   $("#sampleButton").addEventListener("click", () => importVocabulary(sampleCsv, "\u00d6rnek kelime listesi y\u00fcklendi."));
-  $("#resetButton").addEventListener("click", resetAll);
+  $("#resetButton").addEventListener("click", openResetModal);
+  $("#resetModalCancel").addEventListener("click", closeResetModal);
+  $("#resetProgressOnly").addEventListener("click", handleResetProgressOnly);
+  $("#resetEverything").addEventListener("click", handleResetEverything);
+  $("#focusButton").addEventListener("click", openFocusMode);
+  $("#focusModalClose").addEventListener("click", closeFocusMode);
+  $("#focusReveal").addEventListener("click", focusReveal);
+  $("#focusWrong").addEventListener("click", () => focusAnswer(false));
+  $("#focusRight").addEventListener("click", () => focusAnswer(true));
   $("#exportButton").addEventListener("click", exportProgress);
   $("#startReviewButton").addEventListener("click", () => {
     cardMode = "due";
@@ -1377,15 +1385,48 @@ function cssEscape(value) {
   return String(value).replace(/["\\]/g, "\\$&");
 }
 
-function resetAll() {
-  const password = window.prompt("Tum kelime ve ilerleme verilerini silmek icin sifreyi girin:");
+// ── Reset Modal ──────────────────────────────────────────
+function openResetModal() {
+  $("#resetModal").classList.remove("hidden");
+}
+
+function closeResetModal() {
+  $("#resetModal").classList.add("hidden");
+}
+
+function handleResetProgressOnly() {
+  closeResetModal();
+  const password = window.prompt("İlerleme verilerini silmek için şifreyi girin:");
   if (password === null) return;
   if (password !== AUTH.password) {
-    window.alert("Sifre hatali. Veriler silinmedi.");
+    window.alert("Şifre hatalı. Veriler silinmedi.");
     return;
   }
 
-  downloadProgressBackup("before-reset");
+  downloadProgressBackup("before-progress-reset");
+  progress = {};
+  daily = {};
+  // Reset progress for all vocabulary items
+  vocabulary.forEach((item) => {
+    progress[item.id] = createProgress(item.id);
+  });
+  [STORAGE_KEYS.progress, STORAGE_KEYS.daily, STORAGE_KEYS.snapshot].forEach((key) => localStorage.removeItem(key));
+  saveStudyData();
+  renderAll();
+  updateCard(null);
+  setStatus(`İlerleme sıfırlandı. ${vocabulary.length} kelime listede kalmaya devam ediyor.`);
+}
+
+function handleResetEverything() {
+  closeResetModal();
+  const password = window.prompt("Tüm kelime ve ilerleme verilerini silmek için şifreyi girin:");
+  if (password === null) return;
+  if (password !== AUTH.password) {
+    window.alert("Şifre hatalı. Veriler silinmedi.");
+    return;
+  }
+
+  downloadProgressBackup("before-full-reset");
   vocabulary = [];
   progress = {};
   daily = {};
@@ -1395,12 +1436,93 @@ function resetAll() {
     STORAGE_KEYS.daily,
     STORAGE_KEYS.snapshot,
   ].forEach((key) => localStorage.removeItem(key));
+  saveStudyData();
   renderAll();
   updateCard(null);
   $("#quizOptions").innerHTML = "";
   $("#matchWords").innerHTML = "";
   $("#matchMeanings").innerHTML = "";
   setStatus("Kelime listesi bekleniyor.");
+}
+
+// ── Focus Mode (Difficult words sprint) ──────────────────
+let focusQueue = [];
+let focusIndex = 0;
+let focusRevealed = false;
+let focusSessionCorrect = 0;
+let focusSessionTotal = 0;
+
+function openFocusMode() {
+  const difficult = vocabulary.filter((item) => getProgress(item).status === "difficult");
+  if (difficult.length === 0) {
+    window.alert("Henüz 'Zor' olarak işaretlenmiş kelime yok.");
+    return;
+  }
+  focusQueue = shuffle(difficult);
+  focusIndex = 0;
+  focusSessionCorrect = 0;
+  focusSessionTotal = 0;
+  $("#focusModal").classList.remove("hidden");
+  renderFocusCard();
+}
+
+function closeFocusMode() {
+  $("#focusModal").classList.add("hidden");
+  if (focusSessionTotal > 0) {
+    renderAll();
+  }
+}
+
+function renderFocusCard() {
+  if (focusIndex >= focusQueue.length) {
+    // Session complete
+    const pct = focusSessionTotal ? Math.round((focusSessionCorrect / focusSessionTotal) * 100) : 0;
+    $("#focusWord").textContent = "Bitti! 🎉";
+    $("#focusMeaning").textContent = `${focusSessionTotal} kelimeden ${focusSessionCorrect} tanesi doğru — %${pct}`;
+    $("#focusMeaning").classList.remove("hidden");
+    $("#focusCounter").textContent = "";
+    $("#focusReveal").classList.add("hidden");
+    $("#focusWrong").classList.add("hidden");
+    $("#focusRight").classList.add("hidden");
+    return;
+  }
+
+  const item = focusQueue[focusIndex];
+  focusRevealed = false;
+  $("#focusWord").textContent = item.word;
+  $("#focusMeaning").textContent = item.englishMeaning;
+  $("#focusMeaning").classList.add("hidden");
+  $("#focusCounter").textContent = `${focusIndex + 1} / ${focusQueue.length}`;
+  $("#focusReveal").classList.remove("hidden");
+  $("#focusWrong").classList.remove("hidden");
+  $("#focusRight").classList.remove("hidden");
+}
+
+function focusReveal() {
+  if (focusIndex >= focusQueue.length) return;
+  focusRevealed = true;
+  $("#focusMeaning").classList.remove("hidden");
+}
+
+function focusAnswer(correct) {
+  if (focusIndex >= focusQueue.length) return;
+  const item = focusQueue[focusIndex];
+  focusSessionTotal++;
+  if (correct) {
+    focusSessionCorrect++;
+    // Promote out of difficult back to learning
+    const p = getProgress(item);
+    p.status = "learning";
+    p.correctCount = (p.correctCount || 0) + 1;
+    progress[item.id] = p;
+  } else {
+    const p = getProgress(item);
+    p.wrongCount = (p.wrongCount || 0) + 1;
+    progress[item.id] = p;
+  }
+  focusIndex++;
+  saveStudyData();
+  renderFocusCard();
 }
 
 function exportProgress() {

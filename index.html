@@ -45,6 +45,7 @@
           <button class="ghost-button" id="themeButton" type="button">Gece Modu</button>
           <button class="ghost-button" id="logoutButton" type="button">&#199;&#305;k&#305;&#351;</button>
           <button class="ghost-button" id="exportButton" type="button">D&#305;&#351;a Aktar</button>
+          <button class="ghost-button focus-button" id="focusButton" type="button">&#9889; Zor Odak</button>
           <button class="danger-button" id="resetButton" type="button">S&#305;f&#305;rla</button>
         </div>
       </header>
@@ -244,6 +245,51 @@
         </section>
       </section>
     </main>
+
+
+    <!-- Reset Modal -->
+    <div class="modal-overlay hidden" id="resetModal" role="dialog" aria-modal="true" aria-labelledby="resetModalTitle">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="section-kicker">Dikkat</span>
+          <h2 id="resetModalTitle">Ne s&#305;f&#305;rlanacak?</h2>
+          <p class="muted">Her iki i&#351;lem de geri al&#305;namaz. Devam etmeden &#246;nce &#351;ifrenizi gireceksiniz.</p>
+        </div>
+        <div class="modal-actions">
+          <button class="modal-option" id="resetProgressOnly" type="button">
+            <strong>Sadece &#304;lerlemeyi S&#305;f&#305;rla</strong>
+            <span>Kelime listesi kal&#305;r, t&#252;m &#231;al&#305;&#351;ma ge&#231;mi&#351;i ve istatistikler silinir.</span>
+          </button>
+          <button class="modal-option danger-option" id="resetEverything" type="button">
+            <strong>Her &#350;eyi S&#305;f&#305;rla</strong>
+            <span>Kelime listesi ve t&#252;m ilerleme tamamen silinir.</span>
+          </button>
+        </div>
+        <button class="ghost-button modal-cancel" id="resetModalCancel" type="button">&#304;ptal</button>
+      </div>
+    </div>
+
+    <!-- Focus Mode Modal -->
+    <div class="modal-overlay hidden" id="focusModal" role="dialog" aria-modal="true" aria-labelledby="focusModalTitle">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="section-kicker">Zor Kelimeler</span>
+          <h2 id="focusModalTitle">&#9889; Zor Odak Modu</h2>
+          <p class="muted" id="focusModalDesc">Sadece "Zor" olarak i&#351;aretlenmi&#351; kelimeler g&#246;sterilir.</p>
+        </div>
+        <div id="focusCard" class="focus-card">
+          <p class="focus-word" id="focusWord"></p>
+          <p class="focus-meaning hidden" id="focusMeaning"></p>
+          <div class="focus-counter" id="focusCounter"></div>
+        </div>
+        <div class="modal-actions focus-actions">
+          <button class="danger-button" id="focusWrong" type="button">H&#226;l&#226; Zor</button>
+          <button id="focusReveal" type="button">G&#246;ster</button>
+          <button id="focusRight" type="button" class="teal-button">Art&#305;k Biliyorum &#10003;</button>
+        </div>
+        <button class="ghost-button modal-cancel" id="focusModalClose" type="button">Kapat</button>
+      </div>
+    </div>
 
     <script src="config.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
