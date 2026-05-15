@@ -1193,3 +1193,127 @@ h2 {
     order: -1;
   }
 }
+
+/* ── Mobile topbar & hamburger ── */
+.topbar-mobile {
+  display: none;
+}
+
+.hamburger-button {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 13px;
+  width: 48px;
+}
+
+.hamburger-button span {
+  background: var(--ink);
+  border-radius: 2px;
+  display: block;
+  height: 2px;
+  transition: transform 200ms ease, opacity 200ms ease;
+  width: 22px;
+}
+
+.hamburger-button.open span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+.hamburger-button.open span:nth-child(2) {
+  opacity: 0;
+  transform: scaleX(0);
+}
+.hamburger-button.open span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+.sync-status-mobile {
+  border-radius: 999px;
+  font-size: 0.7rem;
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+/* Mobile menu */
+.mobile-menu {
+  animation: slideDown 200ms ease both;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.mobile-menu.hidden {
+  display: none;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.mobile-menu-inner {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.mobile-menu-inner button {
+  justify-content: flex-start;
+  min-height: 48px;
+  width: 100%;
+}
+
+@media (max-width: 860px) {
+  /* Hide desktop actions, show mobile hamburger */
+  .topbar-actions {
+    display: none;
+  }
+
+  .topbar-mobile {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  /* Topbar: single compact row */
+  .topbar {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    padding: 10px 14px;
+  }
+
+  /* Smaller brand on mobile */
+  .brand-lockup {
+    gap: 10px;
+  }
+
+  .brand-mark {
+    height: 40px;
+    width: 40px;
+  }
+
+  h1 {
+    font-size: 1.55rem;
+  }
+
+  .eyebrow {
+    font-size: 0.68rem;
+    margin-bottom: 2px;
+  }
+
+  /* Import band tighter */
+  .import-band {
+    margin-bottom: 8px;
+    padding: 10px 12px;
+  }
+}

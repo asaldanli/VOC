@@ -83,6 +83,15 @@ window.addEventListener("pagehide", () => {
 
 function bindEvents() {
   $("#loginForm").addEventListener("submit", handleLogin);
+  // Hamburger menu
+  $("#hamburgerButton").addEventListener("click", toggleMobileMenu);
+  document.addEventListener("click", closeMobileMenuOnOutsideClick);
+  // Mirror desktop buttons → mobile menu buttons
+  $("#themeButtonM").addEventListener("click", () => { toggleTheme(); closeMobileMenu(); });
+  $("#focusButtonM").addEventListener("click", () => { openFocusMode(); closeMobileMenu(); });
+  $("#exportButtonM").addEventListener("click", () => { exportProgress(); closeMobileMenu(); });
+  $("#logoutButtonM").addEventListener("click", () => { logout(); closeMobileMenu(); });
+  $("#resetButtonM").addEventListener("click", () => { openResetModal(); closeMobileMenu(); });
   $("#themeButton").addEventListener("click", toggleTheme);
   $("#logoutButton").addEventListener("click", logout);
   $$(".tab-button").forEach((button) => {
@@ -291,6 +300,14 @@ function updateSyncStatus(message) {
     message = getCloudConfig().isConfigured ? "Cloud Sync: Acik" : "Cloud Sync: Kapali";
   }
   status.textContent = message;
+  // Update mobile badge colour
+  const badge = $("#syncStatusMobile");
+  if (badge) {
+    const isOk = message.includes("Guncel") || message.includes("Acik");
+    const isErr = message.includes("Hata") || message.includes("Baglanti");
+    badge.style.color = isOk ? "var(--teal)" : isErr ? "var(--red)" : "var(--yellow)";
+    badge.title = message;
+  }
 }
 
 function queueCloudSave() {
@@ -1579,6 +1596,36 @@ function focusAnswer(correct) {
   focusIndex++;
   saveStudyData();
   renderFocusCard();
+}
+
+// ── Mobile menu ──────────────────────────────────────────
+function toggleMobileMenu() {
+  const menu = $("#mobileMenu");
+  const btn = $("#hamburgerButton");
+  const isOpen = !menu.classList.contains("hidden");
+  if (isOpen) {
+    closeMobileMenu();
+  } else {
+    menu.classList.remove("hidden");
+    btn.classList.add("open");
+    btn.setAttribute("aria-expanded", "true");
+  }
+}
+
+function closeMobileMenu() {
+  $("#mobileMenu")?.classList.add("hidden");
+  const btn = $("#hamburgerButton");
+  btn?.classList.remove("open");
+  btn?.setAttribute("aria-expanded", "false");
+}
+
+function closeMobileMenuOnOutsideClick(event) {
+  const menu = $("#mobileMenu");
+  const btn = $("#hamburgerButton");
+  if (!menu || menu.classList.contains("hidden")) return;
+  if (!menu.contains(event.target) && !btn.contains(event.target)) {
+    closeMobileMenu();
+  }
 }
 
 function exportProgress() {
