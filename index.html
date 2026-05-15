@@ -190,6 +190,7 @@
       </section>
 
       <section id="analytics" class="view">
+        <!-- Top accuracy cards -->
         <div class="analytics-grid">
           <article class="metric-card accent-teal">
             <span>Kartlar</span>
@@ -208,26 +209,27 @@
             <strong id="totalAccuracy">0%</strong>
           </article>
         </div>
-        <div class="panel-grid analytics-panels">
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <span class="section-kicker">Daily</span>
-                <h2>Son 7 G&#252;n</h2>
-              </div>
-            </div>
-            <div id="dailyAnalysisBars" class="analysis-bars"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <span class="section-kicker">Monthly</span>
-                <h2>Son 6 Ay</h2>
-              </div>
-            </div>
-            <div id="monthlyAnalysisBars" class="analysis-bars"></div>
-          </section>
+
+        <!-- Period selector -->
+        <div class="period-tabs">
+          <button class="period-tab active" data-period="daily" type="button">Günlük</button>
+          <button class="period-tab" data-period="weekly" type="button">Haftalık</button>
+          <button class="period-tab" data-period="monthly" type="button">Aylık</button>
         </div>
+
+        <!-- Detail table -->
+        <section class="panel analytics-detail-panel">
+          <div class="analytics-detail-header">
+            <span class="adh-label">Dönem</span>
+            <span class="adh-mode accent-teal">&#9632; Kartlar</span>
+            <span class="adh-mode accent-blue">&#9632; Quiz</span>
+            <span class="adh-mode accent-yellow">&#9632; E&#351;le&#351;tir</span>
+            <span class="adh-total">Toplam</span>
+          </div>
+          <div id="analyticsDetailRows" class="analytics-detail-rows"></div>
+        </section>
+
+        <!-- Learning summary -->
         <section class="panel">
           <div class="panel-heading">
             <div>

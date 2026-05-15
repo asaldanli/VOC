@@ -46,6 +46,7 @@ let draggedMatchId = null;
 let currentMatchIds = new Set();
 let cardPointer = null;
 let cloudSaveTimer = null;
+let activeAnalyticsPeriod = "daily";
 let cloudSyncInProgress = false;
 let cloudDb = null;
 let cloudRef = null;
@@ -144,6 +145,13 @@ function bindEvents() {
   });
   $("#nextQuizButton").addEventListener("click", nextQuiz);
   $("#newMatchButton").addEventListener("click", newMatchSet);
+  $$(".period-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activeAnalyticsPeriod = btn.dataset.period;
+      $$(".period-tab").forEach((b) => b.classList.toggle("active", b === btn));
+      renderAnalyticsDetail();
+    });
+  });
   $("#searchInput").addEventListener("input", renderWords);
   $("#statusFilter").addEventListener("change", renderWords);
   document.addEventListener("keydown", handleKeyboardShortcuts);
@@ -1272,7 +1280,6 @@ function renderWeeklyBars() {
 function renderAnalytics() {
   if (!$("#cardAccuracy")) return;
 
-  const month = periodStats(29);
   const allTotals = periodStats(3650);
   const modeTotals = modeStats(3650);
 
@@ -1281,9 +1288,127 @@ function renderAnalytics() {
   $("#matchAccuracy").textContent = `${accuracy(modeTotals.matching)}%`;
   $("#totalAccuracy").textContent = `${accuracy(allTotals)}%`;
 
-  renderDailyAnalysisBars();
-  renderMonthlyAnalysisBars();
-  renderLearningSummary(allTotals, month, modeTotals);
+  renderAnalyticsDetail();
+  renderLearningSummary(allTotals, periodStats(29), modeTotals);
+}
+
+function renderAnalyticsDetail() {
+  const container = $("#analyticsDetailRows");
+  if (!container) return;
+
+  const rows = buildAnalyticsPeriods(activeAnalyticsPeriod);
+  if (!rows.length) { container.innerHTML = `<div class="adr-label" style="padding:18px">Veri yok.</div>`; return; }
+
+  // Max studied across all rows (for bar scaling)
+  const maxStudied = Math.max(1, ...rows.map((r) => r.total.studiedCount));
+
+  container.innerHTML = rows.map((row) => {
+    const pct = accuracy(row.total);
+    const isEmpty = row.total.studiedCount === 0;
+    return `
+      <div class="analytics-detail-row${isEmpty ? " empty-row" : ""}">
+        <div class="adr-label">
+          ${escapeHtml(row.primary)}
+          ${row.secondary ? `<small>${escapeHtml(row.secondary)}</small>` : ""}
+        </div>
+        ${modeCell(row.modes.flashcards, "var(--teal)", maxStudied)}
+        ${modeCell(row.modes.quiz, "var(--blue)", maxStudied)}
+        ${modeCell(row.modes.matching, "var(--yellow)", maxStudied)}
+        <div class="adr-total">
+          <span class="adr-total-count">${row.total.studiedCount}</span>
+          <span class="adr-total-pct">${isEmpty ? "—" : pct + "%"}</span>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function modeCell(stats, color, maxStudied) {
+  const pct = accuracy(stats);
+  const barWidth = maxStudied > 0 ? Math.max(0, (stats.studiedCount / maxStudied) * 100) : 0;
+  return `
+    <div class="adr-mode">
+      <span class="adr-mode-count">${stats.studiedCount || 0}</span>
+      <span class="adr-mode-pct">${stats.studiedCount ? pct + "%" : "—"}</span>
+      <div class="adr-mode-bar">
+        <div class="adr-mode-bar-fill" style="width:${barWidth}%;background:${color}"></div>
+      </div>
+    </div>`;
+}
+
+function buildAnalyticsPeriods(period) {
+  if (period === "daily") {
+    // Last 30 days, newest first
+    return Array.from({ length: 30 }, (_, i) => {
+      const key = todayKey(-i);
+      const stats = normalizeDailyStats(daily[key], key);
+      const d = new Date(key);
+      return {
+        primary: key.slice(5).replace("-", "/"),
+        secondary: d.toLocaleDateString("tr-TR", { weekday: "short" }),
+        total: { studiedCount: stats.studiedCount, correctCount: stats.correctCount, wrongCount: stats.wrongCount },
+        modes: stats.modes,
+      };
+    });
+  }
+
+  if (period === "weekly") {
+    // Last 16 weeks, newest first
+    return Array.from({ length: 16 }, (_, i) => {
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1 - i * 7); // Monday
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const days = Array.from({ length: 7 }, (_, d) => {
+        const day = new Date(weekStart);
+        day.setDate(day.getDate() + d);
+        return formatDateKey(day);
+      });
+      const modes = emptyModeStats();
+      let totalStudied = 0, totalCorrect = 0, totalWrong = 0;
+      days.forEach((key) => {
+        const s = normalizeDailyStats(daily[key], key);
+        totalStudied += s.studiedCount; totalCorrect += s.correctCount; totalWrong += s.wrongCount;
+        Object.keys(modes).forEach((m) => {
+          modes[m].studiedCount += s.modes[m].studiedCount;
+          modes[m].correctCount += s.modes[m].correctCount;
+          modes[m].wrongCount   += s.modes[m].wrongCount;
+        });
+      });
+      const startStr = formatDateKey(weekStart).slice(5).replace("-", "/");
+      const endStr   = formatDateKey(weekEnd).slice(5).replace("-", "/");
+      return {
+        primary: `${startStr}–${endStr}`,
+        secondary: `${i === 0 ? "Bu hafta" : i + ". hafta önce"}`,
+        total: { studiedCount: totalStudied, correctCount: totalCorrect, wrongCount: totalWrong },
+        modes,
+      };
+    });
+  }
+
+  // monthly — last 12 months, newest first
+  return Array.from({ length: 12 }, (_, i) => {
+    const now = new Date();
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const modes = emptyModeStats();
+    let totalStudied = 0, totalCorrect = 0, totalWrong = 0;
+    Object.entries(daily).filter(([k]) => k.startsWith(monthKey)).forEach(([, item]) => {
+      const s = normalizeDailyStats(item);
+      totalStudied += s.studiedCount; totalCorrect += s.correctCount; totalWrong += s.wrongCount;
+      Object.keys(modes).forEach((m) => {
+        modes[m].studiedCount += s.modes[m].studiedCount;
+        modes[m].correctCount += s.modes[m].correctCount;
+        modes[m].wrongCount   += s.modes[m].wrongCount;
+      });
+    });
+    const label = d.toLocaleDateString("tr-TR", { year: "numeric", month: "short" });
+    return {
+      primary: label,
+      secondary: i === 0 ? "Bu ay" : "",
+      total: { studiedCount: totalStudied, correctCount: totalCorrect, wrongCount: totalWrong },
+      modes,
+    };
+  });
 }
 
 function periodStats(daysBack) {
@@ -1302,61 +1427,15 @@ function accuracy(stats) {
   return answered ? Math.round((stats.correctCount / answered) * 100) : 0;
 }
 
-function renderDailyAnalysisBars() {
-  const days = Array.from({ length: 7 }, (_, index) => todayKey(index - 6));
-  const max = Math.max(1, ...days.map((day) => normalizeDailyStats(daily[day], day).studiedCount || 0));
-  $("#dailyAnalysisBars").innerHTML = days.map((day) => {
-    const item = normalizeDailyStats(daily[day], day);
-    const width = Math.max(4, (item.studiedCount / max) * 100);
-    return analysisRowTemplate(day.slice(5), item, width);
-  }).join("");
-}
 
-function renderMonthlyAnalysisBars() {
-  const months = lastMonths(6);
-  const monthStats = months.map((month) => ({
-    label: month,
-    ...statsForMonth(month),
-  }));
-  const max = Math.max(1, ...monthStats.map((item) => item.studiedCount));
-  $("#monthlyAnalysisBars").innerHTML = monthStats.map((item) => (
-    analysisRowTemplate(item.label, item, Math.max(4, (item.studiedCount / max) * 100))
-  )).join("");
-}
 
-function analysisRowTemplate(label, stats, width) {
-  return `
-    <div class="analysis-row">
-      <div>
-        <strong>${escapeHtml(label)}</strong>
-        <span>${stats.studiedCount || 0} kart / ${accuracy(stats)}% dogru</span>
-      </div>
-      <div class="analysis-track">
-        <div class="analysis-fill" style="width:${width}%"></div>
-      </div>
-    </div>
-  `;
-}
 
-function lastMonths(count) {
-  const now = new Date();
-  return Array.from({ length: count }, (_, index) => {
-    const date = new Date(now.getFullYear(), now.getMonth() - (count - 1 - index), 1);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-  });
-}
 
-function statsForMonth(monthKey) {
-  return Object.entries(daily)
-    .filter(([date]) => date.startsWith(monthKey))
-    .reduce((total, [, item]) => {
-      const stats = normalizeDailyStats(item);
-      total.studiedCount += stats.studiedCount || 0;
-      total.correctCount += stats.correctCount || 0;
-      total.wrongCount += stats.wrongCount || 0;
-      return total;
-    }, { studiedCount: 0, correctCount: 0, wrongCount: 0 });
-}
+
+
+
+
+
 
 function modeStats(daysBack) {
   const days = Array.from({ length: daysBack + 1 }, (_, index) => todayKey(index - daysBack));
