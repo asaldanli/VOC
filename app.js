@@ -300,14 +300,9 @@ function updateSyncStatus(message) {
     message = getCloudConfig().isConfigured ? "Cloud Sync: Acik" : "Cloud Sync: Kapali";
   }
   status.textContent = message;
-  // Update mobile badge colour
+  // Update mobile FAB sync label
   const badge = $("#syncStatusMobile");
-  if (badge) {
-    const isOk = message.includes("Guncel") || message.includes("Acik");
-    const isErr = message.includes("Hata") || message.includes("Baglanti");
-    badge.style.color = isOk ? "var(--teal)" : isErr ? "var(--red)" : "var(--yellow)";
-    badge.title = message;
-  }
+  if (badge) badge.textContent = message;
 }
 
 function queueCloudSave() {
