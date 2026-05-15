@@ -52,7 +52,6 @@ let cloudRef = null;
 let cloudListenerAttached = false;
 let applyingRemoteData = false;
 let lastResetAt = null;
-let resetInProgress = false;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -324,41 +323,37 @@ async function syncFromFirebase() {
     const snap = await cloudRef.once("value");
     const remote = snap.val();
     const remotePayload = remote?.data || (remote?.vocabulary ? remote : null);
-    const hadRemoteData = Boolean(remotePayload?.vocabulary?.length || Object.keys(remotePayload?.progress || {}).length);
+    const hadRemoteVocab = Array.isArray(remotePayload?.vocabulary) && remotePayload.vocabulary.length > 0;
 
-    const localVocabCount = vocabulary.length;
-    const localProgressCount = Object.keys(progress).length;
-
-    // If remote has a resetAt flag, it was an intentional reset — always apply it
     if (remotePayload?.resetAt) {
-      lastResetAt = remotePayload.resetAt;
-      vocabulary = Array.isArray(remotePayload.vocabulary) ? remotePayload.vocabulary : [];
+      // === RESET STATE: Firebase holds intentional reset — always apply, never merge ===
+      vocabulary = hadRemoteVocab ? remotePayload.vocabulary : [];
       progress = {};
       daily = {};
+      [STORAGE_KEYS.vocabulary, STORAGE_KEYS.progress, STORAGE_KEYS.daily, STORAGE_KEYS.snapshot].forEach((k) => localStorage.removeItem(k));
       vocabulary.forEach((item) => { progress[String(item.id)] = createProgress(String(item.id)); });
       if (remotePayload.progress && Object.keys(remotePayload.progress).length) {
         Object.assign(progress, remotePayload.progress);
       }
-      if (remotePayload.daily && Object.keys(remotePayload.daily).length) {
-        daily = remotePayload.daily;
-      }
-      [STORAGE_KEYS.progress, STORAGE_KEYS.daily, STORAGE_KEYS.snapshot].forEach((key) => localStorage.removeItem(key));
+      saveStudyData({ sync: false });
+      attachCloudListener();
+      // resetAt stays in Firebase — cleared only on the next user-initiated save (studying/import)
+      updateSyncStatus("Cloud Sync: Guncel");
+
+    } else if (hadRemoteVocab) {
+      // === NORMAL SYNC: Firebase is source of truth — replace local completely, never write back ===
+      // This prevents any device from re-uploading stale local data and overwriting Firebase.
+      vocabulary = remotePayload.vocabulary;
+      progress = typeof remotePayload.progress === "object" && remotePayload.progress
+        ? remotePayload.progress : {};
+      daily = typeof remotePayload.daily === "object" && remotePayload.daily
+        ? remotePayload.daily : {};
       saveStudyData({ sync: false });
       attachCloudListener();
       updateSyncStatus("Cloud Sync: Guncel");
-    } else if (hadRemoteData) {
-      // Remote data exists: always merge remote INTO local (remote wins on conflicts)
-      mergeBackupData(remotePayload);
-      saveStudyData({ sync: false });
-      attachCloudListener();
-      // Only write back to Firebase if local had additional data not present in remote
-      if (localVocabCount > 0 || localProgressCount > 0) {
-        await saveToFirebase();
-      } else {
-        updateSyncStatus("Cloud Sync: Guncel");
-      }
+
     } else {
-      // No remote data: upload local data if any
+      // === EMPTY FIREBASE: upload local data if any ===
       saveStudyData({ sync: false });
       attachCloudListener();
       if (hasStudyData()) {
@@ -378,34 +373,37 @@ function attachCloudListener() {
   if (cloudListenerAttached || !cloudRef) return;
   cloudListenerAttached = true;
   cloudRef.on("value", (snap) => {
-    if (resetInProgress) return;
+    if (applyingRemoteData) return;
     const remote = snap.val();
     const remoteData = remote?.data || (remote?.vocabulary ? remote : null);
-    const hasContent = remoteData?.vocabulary?.length > 0 || Object.keys(remoteData?.progress || {}).length > 0;
+    const hadRemoteVocab = Array.isArray(remoteData?.vocabulary) && remoteData.vocabulary.length > 0;
     const isReset = Boolean(remoteData?.resetAt);
-    if (!remoteData || (!hasContent && !isReset)) return;
 
-    // Ignore the echo of our own reset write
-    if (isReset && remoteData.resetAt === lastResetAt) return;
+    if (!remoteData || (!hadRemoteVocab && !isReset)) return;
 
     if (isReset) {
-      // Reset from another device - honour it
-      const localSavedAt = loadJson(STORAGE_KEYS.snapshot, null)?.savedAt || null;
-      const resetIsNewer = !localSavedAt || remoteData.resetAt > localSavedAt;
-      if (resetIsNewer) {
-        lastResetAt = remoteData.resetAt; // prevent re-processing
-        vocabulary = Array.isArray(remoteData.vocabulary) && remoteData.vocabulary.length > 0 ? remoteData.vocabulary : [];
-        progress = (remoteData.vocabulary?.length && remoteData.progress) ? remoteData.progress : {};
-        daily = (remoteData.daily && Object.keys(remoteData.daily).length) ? remoteData.daily : {};
-        saveStudyData({ sync: false });
-        renderAll();
-        updateSyncStatus("Cloud Sync: Guncel");
+      // Reset from another device — apply completely, never merge
+      const localSnapshot = loadJson(STORAGE_KEYS.snapshot, null);
+      const resetIsNewer = !localSnapshot?.savedAt || remoteData.resetAt > localSnapshot.savedAt;
+      if (!resetIsNewer) return; // already applied this reset
+      lastResetAt = remoteData.resetAt;
+      vocabulary = hadRemoteVocab ? remoteData.vocabulary : [];
+      progress = {};
+      daily = {};
+      [STORAGE_KEYS.vocabulary, STORAGE_KEYS.progress, STORAGE_KEYS.daily, STORAGE_KEYS.snapshot].forEach((k) => localStorage.removeItem(k));
+      vocabulary.forEach((item) => { progress[String(item.id)] = createProgress(String(item.id)); });
+      if (remoteData.progress && Object.keys(remoteData.progress).length) {
+        Object.assign(progress, remoteData.progress);
       }
+      saveStudyData({ sync: false });
+      renderAll();
+      updateSyncStatus("Cloud Sync: Guncel");
     } else {
-      // Normal data update from another device
-      if (applyingRemoteData) return;
+      // Normal update from another device — replace local completely, never merge
       applyingRemoteData = true;
-      mergeBackupData(remoteData);
+      vocabulary = remoteData.vocabulary;
+      progress = typeof remoteData.progress === "object" && remoteData.progress ? remoteData.progress : {};
+      daily = typeof remoteData.daily === "object" && remoteData.daily ? remoteData.daily : {};
       saveStudyData({ sync: false });
       renderAll();
       applyingRemoteData = false;
@@ -418,30 +416,23 @@ function attachCloudListener() {
 
 async function saveToFirebase(options = {}) {
   const config = getCloudConfig();
-  if (!config.isConfigured || localStorage.getItem(STORAGE_KEYS.auth) !== "true") return false;
+  if (!config.isConfigured || localStorage.getItem(STORAGE_KEYS.auth) !== "true") return;
   const db = initCloud();
-  if (!db || !cloudRef) return false;
+  if (!db || !cloudRef) return;
   updateSyncStatus("Cloud Sync: Kaydediliyor");
 
   try {
     applyingRemoteData = true;
-    const cloudPayload = {
+    await cloudRef.update({
       username: AUTH.username,
       data: getStudyPayload(options),
       updatedAt: firebase.database.ServerValue.TIMESTAMP,
-    };
-    if (options.replaceCloud) {
-      await cloudRef.set(cloudPayload);
-    } else {
-      await cloudRef.update(cloudPayload);
-    }
+    });
     applyingRemoteData = false;
     updateSyncStatus("Cloud Sync: Guncel");
-    return true;
   } catch {
     applyingRemoteData = false;
     updateSyncStatus("Cloud Sync: Hata");
-    return false;
   }
 }
 
@@ -1451,7 +1442,7 @@ function closeResetModal() {
   $("#resetModal").classList.add("hidden");
 }
 
-async function handleResetProgressOnly() {
+function handleResetProgressOnly() {
   closeResetModal();
   const password = window.prompt("İlerleme verilerini silmek için şifreyi girin:");
   if (password === null) return;
@@ -1460,31 +1451,26 @@ async function handleResetProgressOnly() {
     return;
   }
 
-  resetInProgress = true;
+  downloadProgressBackup("before-progress-reset");
   progress = {};
   daily = {};
   [STORAGE_KEYS.progress, STORAGE_KEYS.daily, STORAGE_KEYS.snapshot].forEach((key) => localStorage.removeItem(key));
-  // Re-create fresh progress for every word (status=new, counts=0)
   vocabulary.forEach((item) => {
     progress[String(item.id)] = createProgress(String(item.id));
   });
-  const resetAt = new Date().toISOString();
-  lastResetAt = resetAt;
   detachCloudListener();
   saveStudyData({ sync: false });
-  renderAll();
-  updateCard(null);
-  setStatus(`İlerleme sıfırlandı. ${vocabulary.length} kelime listede kalmaya devam ediyor.`);
-  const saved = await saveToCloud({ resetAt, replaceCloud: true });
-  resetInProgress = false;
-  if (saved) {
-    attachCloudListener();
-  } else {
-    setStatus("Ilerleme yerelde sifirlandi, fakat Firebase'e yazilamadi. Eski verilerin geri gelmemesi icin sayfayi yenilemeden tekrar deneyin.");
-  }
+  updateSyncStatus("Cloud Sync: Kaydediliyor");
+  const resetAt = new Date().toISOString();
+  saveToCloud({ resetAt })
+    .then(() => window.location.reload())
+    .catch(() => {
+      updateSyncStatus("Cloud Sync: Hata");
+      window.setTimeout(() => window.location.reload(), 1500);
+    });
 }
 
-async function handleResetEverything() {
+function handleResetEverything() {
   closeResetModal();
   const password = window.prompt("Tüm kelime ve ilerleme verilerini silmek için şifreyi girin:");
   if (password === null) return;
@@ -1493,7 +1479,7 @@ async function handleResetEverything() {
     return;
   }
 
-  resetInProgress = true;
+  downloadProgressBackup("before-full-reset");
   vocabulary = [];
   progress = {};
   daily = {};
@@ -1503,23 +1489,16 @@ async function handleResetEverything() {
     STORAGE_KEYS.daily,
     STORAGE_KEYS.snapshot,
   ].forEach((key) => localStorage.removeItem(key));
-  const resetAt = new Date().toISOString();
-  lastResetAt = resetAt;
   detachCloudListener();
   saveStudyData({ sync: false });
-  renderAll();
-  updateCard(null);
-  $("#quizOptions").innerHTML = "";
-  $("#matchWords").innerHTML = "";
-  $("#matchMeanings").innerHTML = "";
-  setStatus("Kelime listesi bekleniyor.");
-  const saved = await saveToCloud({ resetAt, replaceCloud: true });
-  resetInProgress = false;
-  if (saved) {
-    attachCloudListener();
-  } else {
-    setStatus("Veriler yerelde sifirlandi, fakat Firebase'e yazilamadi. Eski verilerin geri gelmemesi icin sayfayi yenilemeden tekrar deneyin.");
-  }
+  updateSyncStatus("Cloud Sync: Kaydediliyor");
+  const resetAt = new Date().toISOString();
+  saveToCloud({ resetAt })
+    .then(() => window.location.reload())
+    .catch(() => {
+      updateSyncStatus("Cloud Sync: Hata");
+      window.setTimeout(() => window.location.reload(), 1500);
+    });
 }
 
 // ── Focus Mode (Difficult words sprint) ──────────────────
