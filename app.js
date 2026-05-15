@@ -12,6 +12,16 @@ const AUTH = {
   password: "21542154",
 };
 
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC48zpV-bhFVoP6cNx9IGunljVk7_xyHAw",
+  authDomain: "soru-takip-uygulamasi.firebaseapp.com",
+  databaseURL: "https://soru-takip-uygulamasi-default-rtdb.firebaseio.com",
+  projectId: "soru-takip-uygulamasi",
+  storageBucket: "soru-takip-uygulamasi.firebasestorage.app",
+  messagingSenderId: "716938527262",
+  appId: "1:716938527262:web:2e252a594e0e3df8f0640f",
+};
+
 const sampleCsv = `No,S\u00f6zc\u00fck,T\u00fcrk\u00e7e Kar\u015f\u0131l\u0131\u011f\u0131
 1,immature,olgunla\u015fmam\u0131\u015f
 2,abandon,terk etmek
@@ -221,9 +231,13 @@ function getStudyPayload() {
   };
 }
 
+function hasStudyData() {
+  return vocabulary.length > 0 || Object.keys(progress).length > 0 || Object.keys(daily).length > 0;
+}
+
 function getCloudConfig() {
   const config = window.KELIME_STUDIO_CLOUD || {};
-  const firebaseConfig = config.firebaseConfig || null;
+  const firebaseConfig = config.firebaseConfig || DEFAULT_FIREBASE_CONFIG;
   const databasePath = String(config.databasePath || `yds-vocabulary/${AUTH.username}`).replace(/^\/+|\/+$/g, "");
   const hasFirebase = typeof window.firebase !== "undefined" && firebaseConfig;
   const isConfigured = Boolean(
@@ -297,6 +311,7 @@ async function syncFromFirebase() {
     if (!db || !cloudRef) throw new Error("Firebase is not available");
     const snap = await cloudRef.once("value");
     const remote = snap.val();
+    const hadRemoteData = Boolean(remote?.data || remote?.vocabulary || remote?.progress || remote?.daily);
     if (remote?.data) {
       mergeBackupData(remote.data);
     } else if (remote?.vocabulary || remote?.progress || remote?.daily) {
@@ -304,7 +319,9 @@ async function syncFromFirebase() {
     }
     saveStudyData({ sync: false });
     attachCloudListener();
-    await saveToFirebase();
+    if (hadRemoteData || hasStudyData()) {
+      await saveToFirebase();
+    }
     updateSyncStatus("Cloud Sync: Guncel");
   } catch {
     updateSyncStatus("Cloud Sync: Hata");
