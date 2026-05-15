@@ -10,6 +10,7 @@ Personal vocabulary study prototype for YDS-style English practice.
 - Adds a simple login gate with username `saldanli`.
 - Supports light and dark color modes.
 - Downloads a JSON backup whenever you log out.
+- Can import a downloaded JSON backup from another browser/device.
 - Keeps a local internal snapshot so normal GitHub Pages code updates do not remove study progress.
 - Requires the login password before `Sıfırla` can delete vocabulary and progress.
 - Includes mobile shortcut metadata and an app icon through `manifest.webmanifest`.
@@ -60,7 +61,9 @@ This means:
 - Progress stays on the same browser/device.
 - Clearing browser storage deletes progress.
 - Updating the GitHub Pages files at the same site URL should not delete progress.
-- Changing the site URL, changing browser, or clearing site data still requires restoring from a downloaded backup.
+- Changing device/browser does not automatically sync because this is a static GitHub Pages app.
+- To continue on mobile, upload the JSON backup downloaded from PC logout/export.
+- Automatic PC-to-mobile sync requires a backend database such as Supabase or Firebase.
 
 The login screen is a convenience gate for personal use. A static GitHub Pages app cannot securely authenticate users or automatically sync progress across different devices without a backend service.
 

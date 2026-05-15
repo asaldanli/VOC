@@ -47,6 +47,10 @@ document.addEventListener("DOMContentLoaded", () => {
   renderAll();
 });
 
+window.addEventListener("pagehide", () => {
+  saveStudyData();
+});
+
 function bindEvents() {
   $("#loginForm").addEventListener("submit", handleLogin);
   $("#themeButton").addEventListener("click", toggleTheme);
@@ -126,7 +130,7 @@ function applyTheme() {
   const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
   const theme = savedTheme || (prefersDark ? "dark" : "light");
   document.documentElement.dataset.theme = theme;
-  document.querySelector("meta[name='theme-color']")?.setAttribute("content", theme === "dark" ? "#0f1414" : "#151515");
+  document.querySelector("meta[name='theme-color']")?.setAttribute("content", theme === "dark" ? "#000000" : "#151515");
   const label = theme === "dark" ? "Gunduz Modu" : "Gece Modu";
   if ($("#themeButton")) $("#themeButton").textContent = label;
 }
@@ -195,6 +199,64 @@ function restoreStudyDataIfNeeded() {
   progress = snapshot.progress && typeof snapshot.progress === "object" ? snapshot.progress : {};
   daily = snapshot.daily && typeof snapshot.daily === "object" ? snapshot.daily : {};
   saveStudyData();
+}
+
+function importProgressBackup(jsonText, fileName) {
+  try {
+    const backup = JSON.parse(jsonText);
+    if (!Array.isArray(backup.vocabulary) || typeof backup.progress !== "object" || typeof backup.daily !== "object") {
+      setStatus("Yedek dosyasi uygun formatta degil.");
+      return;
+    }
+
+    mergeBackupData(backup);
+    saveStudyData();
+    renderAll();
+    setStatus(`${fileName} yedegi yuklendi. Toplam ${vocabulary.length} kelime hazir.`);
+  } catch {
+    setStatus("Yedek dosyasi okunamadi.");
+  }
+}
+
+function mergeBackupData(backup) {
+  const existingById = new Map(vocabulary.map((item) => [item.id, item]));
+  const existingWordToId = new Map(vocabulary.map((item) => [normalizeWordKey(item.word), item.id]));
+
+  backup.vocabulary.forEach((item) => {
+    if (!item?.word || !item?.englishMeaning) return;
+    const cleanItem = {
+      id: String(item.id || `word:${normalizeWordKey(item.word)}`),
+      word: String(item.word).trim(),
+      englishMeaning: String(item.englishMeaning).trim(),
+    };
+    const wordKey = normalizeWordKey(cleanItem.word);
+    const existingId = existingById.has(cleanItem.id) ? cleanItem.id : existingWordToId.get(wordKey);
+    const targetId = existingId || cleanItem.id;
+    const nextItem = { ...(existingById.get(targetId) || {}), ...cleanItem, id: targetId };
+
+    existingById.set(targetId, nextItem);
+    existingWordToId.set(wordKey, targetId);
+    if (backup.progress?.[cleanItem.id]) {
+      progress[targetId] = mergeProgress(progress[targetId] || createProgress(targetId), backup.progress[cleanItem.id], targetId);
+    }
+    if (!progress[targetId]) progress[targetId] = createProgress(targetId);
+  });
+
+  Object.entries(backup.progress || {}).forEach(([wordId, itemProgress]) => {
+    if (!existingById.has(wordId)) return;
+    progress[wordId] = mergeProgress(progress[wordId] || createProgress(wordId), itemProgress, wordId);
+  });
+
+  Object.entries(backup.daily || {}).forEach(([date, item]) => {
+    daily[date] = {
+      date,
+      studiedCount: Math.max(daily[date]?.studiedCount || 0, item?.studiedCount || 0),
+      correctCount: Math.max(daily[date]?.correctCount || 0, item?.correctCount || 0),
+      wrongCount: Math.max(daily[date]?.wrongCount || 0, item?.wrongCount || 0),
+    };
+  });
+
+  vocabulary = dedupeVocabularyByWord(Array.from(existingById.values()));
 }
 
 function todayKey(offset = 0) {
@@ -383,6 +445,14 @@ async function handleFileUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
   const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+  const isJsonBackup = /\.json$/i.test(file.name);
+
+  if (isJsonBackup) {
+    const text = await file.text();
+    importProgressBackup(text, file.name);
+    event.target.value = "";
+    return;
+  }
 
   if (isExcel) {
     if (!window.XLSX) {
@@ -394,11 +464,13 @@ async function handleFileUpload(event) {
     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
     const csvText = XLSX.utils.sheet_to_csv(firstSheet);
     importVocabulary(csvText, `${file.name} ice aktarildi.`);
+    event.target.value = "";
     return;
   }
 
   const text = await file.text();
   importVocabulary(text, `${file.name} ice aktarildi.`);
+  event.target.value = "";
 }
 
 async function handleUrlLoad(event) {

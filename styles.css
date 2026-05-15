@@ -26,17 +26,17 @@
   color-scheme: dark;
   --ink: #f4f7f5;
   --text: #e6ece9;
-  --muted: #a8b4ae;
+  --muted: #b8b8b8;
   --page: #000000;
-  --surface: #101010;
-  --surface-2: #050505;
-  --line: #2a2a2a;
+  --surface: #000000;
+  --surface-2: #000000;
+  --line: #303030;
   --primary: #f4f7f5;
   --primary-text: #101414;
   --login-overlay: rgba(0, 0, 0, 0.94);
-  --import-bg: #050505;
+  --import-bg: #000000;
   --import-text: #f4f7f5;
-  --nav-bg: rgba(24, 32, 32, 0.96);
+  --nav-bg: rgba(0, 0, 0, 0.96);
   --teal: #27c8ad;
   --teal-dark: #67decf;
   --blue: #7ca2ff;
@@ -44,6 +44,10 @@
   --yellow: #f0b53a;
   --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
   --soft-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
+}
+
+:root[data-theme="dark"] body {
+  background: #000000;
 }
 
 * {
