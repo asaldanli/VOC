@@ -20,7 +20,9 @@ Personal vocabulary study prototype for YDS-style English practice.
 - Moves quiz questions forward automatically after an answer.
 - Supports drag-and-drop matching with automatic next sets.
 - Adds daily, weekly, and monthly analysis.
+- Shows separate accuracy for Kartlar, Quiz, and Eşleştir.
 - Saves vocabulary and study progress in the browser.
+- Requests persistent browser storage when supported.
 - Repeats difficult or due words with a simple spaced repetition schedule.
 - Includes a mobile-first layout with bottom navigation for phone use.
 

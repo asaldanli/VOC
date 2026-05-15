@@ -272,16 +272,35 @@ h2 {
 }
 
 .import-band {
-  align-items: center;
   background: var(--import-bg);
   border-radius: 8px;
   box-shadow: var(--shadow);
   color: var(--import-text);
-  display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(170px, 0.34fr) minmax(0, 1fr);
+  display: block;
   margin-bottom: 16px;
   padding: 16px;
+}
+
+.import-summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  list-style: none;
+}
+
+.import-summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary-action {
+  background: var(--surface);
+  border-radius: 999px;
+  color: var(--text);
+  flex: 0 0 auto;
+  font-weight: 900;
+  padding: 8px 12px;
 }
 
 .import-band .section-kicker,
@@ -297,6 +316,7 @@ h2 {
 .import-controls {
   flex-wrap: wrap;
   justify-content: flex-end;
+  margin-top: 16px;
 }
 
 .file-control {
@@ -853,7 +873,17 @@ h2 {
   }
 
   .import-band {
-    grid-template-columns: 1fr;
+    margin-bottom: 10px;
+    padding: 12px;
+  }
+
+  .import-summary {
+    align-items: flex-start;
+  }
+
+  .summary-action {
+    font-size: 0.78rem;
+    padding: 7px 10px;
   }
 
   .import-controls,

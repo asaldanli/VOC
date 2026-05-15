@@ -48,11 +48,14 @@
         </div>
       </header>
 
-      <section class="import-band">
-        <div class="import-copy">
-          <span class="section-kicker">Kaynak</span>
-          <strong>Excel, Google Sheets veya CSV</strong>
-        </div>
+      <details class="import-band">
+        <summary class="import-summary">
+          <span>
+            <span class="section-kicker">Kaynak</span>
+            <strong>Excel, Google Sheets veya CSV</strong>
+          </span>
+          <span class="summary-action">Veri Y&#252;kle</span>
+        </summary>
         <div class="import-controls">
           <label class="file-control">
             <span>Excel/CSV/Yedek Y&#252;kle</span>
@@ -66,7 +69,7 @@
           <a class="template-link" href="template.xlsx" download>Excel Template</a>
         </div>
         <p id="importStatus" class="status-line">Kelime listesi bekleniyor.</p>
-      </section>
+      </details>
 
       <nav class="view-tabs" aria-label="Study views">
         <button class="tab-button active" data-view="dashboard" type="button"><span>Panel</span></button>
@@ -177,20 +180,20 @@
       <section id="analytics" class="view">
         <div class="analytics-grid">
           <article class="metric-card accent-teal">
-            <span>G&#252;nl&#252;k Do&#287;ruluk</span>
-            <strong id="dailyAccuracy">0%</strong>
+            <span>Kartlar</span>
+            <strong id="cardAccuracy">0%</strong>
           </article>
           <article class="metric-card accent-blue">
-            <span>Haftal&#305;k Do&#287;ruluk</span>
-            <strong id="weeklyAccuracy">0%</strong>
+            <span>Quiz</span>
+            <strong id="quizAccuracy">0%</strong>
           </article>
           <article class="metric-card accent-yellow">
-            <span>Ayl&#305;k Do&#287;ruluk</span>
-            <strong id="monthlyAccuracy">0%</strong>
+            <span>E&#351;le&#351;tir</span>
+            <strong id="matchAccuracy">0%</strong>
           </article>
           <article class="metric-card accent-red">
-            <span>Toplam Yanl&#305;&#351;</span>
-            <strong id="totalWrong">0</strong>
+            <span>Toplam</span>
+            <strong id="totalAccuracy">0%</strong>
           </article>
         </div>
         <div class="panel-grid analytics-panels">

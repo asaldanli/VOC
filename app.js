@@ -41,11 +41,21 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
+  requestPersistentStorage();
   restoreStudyDataIfNeeded();
   applyTheme();
   applyAuthState();
   renderAll();
 });
+
+async function requestPersistentStorage() {
+  if (!navigator.storage?.persist) return;
+  try {
+    await navigator.storage.persist();
+  } catch {
+    // Best effort only; the app still works with normal localStorage.
+  }
+}
 
 window.addEventListener("pagehide", () => {
   saveStudyData();
@@ -174,6 +184,7 @@ function saveJson(key, value) {
 }
 
 function saveStudyData() {
+  migrateDailyStats();
   saveJson(STORAGE_KEYS.vocabulary, vocabulary);
   saveJson(STORAGE_KEYS.progress, progress);
   saveJson(STORAGE_KEYS.daily, daily);
@@ -186,18 +197,14 @@ function saveStudyData() {
 }
 
 function restoreStudyDataIfNeeded() {
-  const hasStudyData = vocabulary.length > 0 || Object.keys(progress).length > 0 || Object.keys(daily).length > 0;
-  if (hasStudyData) {
-    saveStudyData();
-    return;
+  const snapshot = loadJson(STORAGE_KEYS.snapshot, null);
+  if (snapshot) {
+    if (!vocabulary.length && Array.isArray(snapshot.vocabulary)) vocabulary = snapshot.vocabulary;
+    if (!Object.keys(progress).length && snapshot.progress && typeof snapshot.progress === "object") progress = snapshot.progress;
+    if (!Object.keys(daily).length && snapshot.daily && typeof snapshot.daily === "object") daily = snapshot.daily;
   }
 
-  const snapshot = loadJson(STORAGE_KEYS.snapshot, null);
-  if (!snapshot) return;
-
-  vocabulary = Array.isArray(snapshot.vocabulary) ? snapshot.vocabulary : [];
-  progress = snapshot.progress && typeof snapshot.progress === "object" ? snapshot.progress : {};
-  daily = snapshot.daily && typeof snapshot.daily === "object" ? snapshot.daily : {};
+  migrateDailyStats();
   saveStudyData();
 }
 
@@ -248,15 +255,11 @@ function mergeBackupData(backup) {
   });
 
   Object.entries(backup.daily || {}).forEach(([date, item]) => {
-    daily[date] = {
-      date,
-      studiedCount: Math.max(daily[date]?.studiedCount || 0, item?.studiedCount || 0),
-      correctCount: Math.max(daily[date]?.correctCount || 0, item?.correctCount || 0),
-      wrongCount: Math.max(daily[date]?.wrongCount || 0, item?.wrongCount || 0),
-    };
+    daily[date] = mergeDailyStats(daily[date], item, date);
   });
 
   vocabulary = dedupeVocabularyByWord(Array.from(existingById.values()));
+  migrateDailyStats();
 }
 
 function todayKey(offset = 0) {
@@ -270,6 +273,62 @@ function formatDateKey(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function emptyModeStats() {
+  return {
+    flashcards: { studiedCount: 0, correctCount: 0, wrongCount: 0 },
+    quiz: { studiedCount: 0, correctCount: 0, wrongCount: 0 },
+    matching: { studiedCount: 0, correctCount: 0, wrongCount: 0 },
+  };
+}
+
+function migrateDailyStats() {
+  Object.entries(daily).forEach(([date, item]) => {
+    daily[date] = normalizeDailyStats(item, date);
+  });
+}
+
+function normalizeDailyStats(item = {}, date = todayKey()) {
+  const modes = emptyModeStats();
+  Object.entries(item.modes || {}).forEach(([mode, stats]) => {
+    if (!modes[mode]) return;
+    modes[mode] = {
+      studiedCount: Number(stats?.studiedCount || 0),
+      correctCount: Number(stats?.correctCount || 0),
+      wrongCount: Number(stats?.wrongCount || 0),
+    };
+  });
+
+  return {
+    date,
+    studiedCount: Number(item.studiedCount || 0),
+    correctCount: Number(item.correctCount || 0),
+    wrongCount: Number(item.wrongCount || 0),
+    modes,
+  };
+}
+
+function mergeDailyStats(current, incoming, date) {
+  const left = normalizeDailyStats(current, date);
+  const right = normalizeDailyStats(incoming, date);
+  const modes = emptyModeStats();
+
+  Object.keys(modes).forEach((mode) => {
+    modes[mode] = {
+      studiedCount: Math.max(left.modes[mode].studiedCount, right.modes[mode].studiedCount),
+      correctCount: Math.max(left.modes[mode].correctCount, right.modes[mode].correctCount),
+      wrongCount: Math.max(left.modes[mode].wrongCount, right.modes[mode].wrongCount),
+    };
+  });
+
+  return {
+    date,
+    studiedCount: Math.max(left.studiedCount, right.studiedCount),
+    correctCount: Math.max(left.correctCount, right.correctCount),
+    wrongCount: Math.max(left.wrongCount, right.wrongCount),
+    modes,
+  };
 }
 
 function parseCsv(text) {
@@ -614,12 +673,12 @@ function revealCard() {
 
 function answerCard(isCorrect) {
   if (!currentCard) return;
-  recordAnswer(currentCard.id, isCorrect);
+  recordAnswer(currentCard.id, isCorrect, "flashcards");
   renderAll();
   nextCard();
 }
 
-function recordAnswer(wordId, isCorrect) {
+function recordAnswer(wordId, isCorrect, mode = "flashcards") {
   const itemProgress = progress[wordId] || createProgress(wordId);
   itemProgress.lastSeenAt = new Date().toISOString();
 
@@ -634,7 +693,7 @@ function recordAnswer(wordId, isCorrect) {
   }
 
   progress[wordId] = itemProgress;
-  recordDaily(isCorrect);
+  recordDaily(isCorrect, mode);
 }
 
 function nextReviewDate(correctCount) {
@@ -643,12 +702,18 @@ function nextReviewDate(correctCount) {
   return todayKey(days);
 }
 
-function recordDaily(isCorrect) {
+function recordDaily(isCorrect, mode = "flashcards") {
   const key = todayKey();
-  daily[key] = daily[key] || { date: key, studiedCount: 0, correctCount: 0, wrongCount: 0 };
+  daily[key] = normalizeDailyStats(daily[key] || { date: key }, key);
   daily[key].studiedCount += 1;
   if (isCorrect) daily[key].correctCount += 1;
   else daily[key].wrongCount += 1;
+
+  const modeStats = daily[key].modes[mode] || { studiedCount: 0, correctCount: 0, wrongCount: 0 };
+  modeStats.studiedCount += 1;
+  if (isCorrect) modeStats.correctCount += 1;
+  else modeStats.wrongCount += 1;
+  daily[key].modes[mode] = modeStats;
   saveStudyData();
 }
 
@@ -682,7 +747,7 @@ function nextQuiz() {
 function answerQuiz(button) {
   if (!currentQuiz || button.disabled) return;
   const isCorrect = button.dataset.id === currentQuiz.id;
-  recordAnswer(currentQuiz.id, isCorrect);
+  recordAnswer(currentQuiz.id, isCorrect, "quiz");
   $$("#quizOptions button").forEach((option) => {
     option.disabled = true;
     option.classList.toggle("correct", option.dataset.id === currentQuiz.id);
@@ -771,7 +836,7 @@ function resolveMatch(wordId, meaningButton) {
   if (!wordButton || wordButton.disabled) return;
 
   const isCorrect = wordId === meaningButton.dataset.id;
-  recordAnswer(wordId, isCorrect);
+  recordAnswer(wordId, isCorrect, "matching");
 
   if (isCorrect) {
     wordButton.classList.add("correct");
@@ -814,7 +879,7 @@ function selectMatch(button, type) {
     const wordButton = selectedMatchWord;
     const meaningButton = selectedMatchMeaning;
     const isCorrect = wordButton.dataset.id === meaningButton.dataset.id;
-    recordAnswer(wordButton.dataset.id, isCorrect);
+    recordAnswer(wordButton.dataset.id, isCorrect, "matching");
 
     if (isCorrect) {
       wordButton.classList.add("correct");
@@ -858,7 +923,7 @@ function renderDashboard() {
   const known = vocabulary.filter((item) => getProgress(item).status === "known").length;
   const difficult = vocabulary.filter((item) => getProgress(item).status === "difficult").length;
   const due = vocabulary.filter(isDue).length;
-  const today = daily[todayKey()] || { studiedCount: 0 };
+  const today = normalizeDailyStats(daily[todayKey()] || { date: todayKey() }, todayKey());
 
   $("#dueCount").textContent = due;
   $("#knownCount").textContent = known;
@@ -875,9 +940,9 @@ function renderDashboard() {
 
 function renderWeeklyBars() {
   const days = Array.from({ length: 7 }, (_, index) => todayKey(index - 6));
-  const max = Math.max(1, ...days.map((day) => daily[day]?.studiedCount || 0));
+  const max = Math.max(1, ...days.map((day) => normalizeDailyStats(daily[day], day).studiedCount || 0));
   $("#weeklyBars").innerHTML = days.map((day) => {
-    const count = daily[day]?.studiedCount || 0;
+    const count = normalizeDailyStats(daily[day], day).studiedCount || 0;
     const label = day.slice(5);
     return `
       <div class="bar-row">
@@ -890,31 +955,26 @@ function renderWeeklyBars() {
 }
 
 function renderAnalytics() {
-  if (!$("#dailyAccuracy")) return;
+  if (!$("#cardAccuracy")) return;
 
-  const today = periodStats(0);
-  const week = periodStats(6);
   const month = periodStats(29);
-  const allTotals = Object.values(daily).reduce((total, item) => ({
-    studiedCount: total.studiedCount + (item.studiedCount || 0),
-    correctCount: total.correctCount + (item.correctCount || 0),
-    wrongCount: total.wrongCount + (item.wrongCount || 0),
-  }), { studiedCount: 0, correctCount: 0, wrongCount: 0 });
+  const allTotals = periodStats(3650);
+  const modeTotals = modeStats(3650);
 
-  $("#dailyAccuracy").textContent = `${accuracy(today)}%`;
-  $("#weeklyAccuracy").textContent = `${accuracy(week)}%`;
-  $("#monthlyAccuracy").textContent = `${accuracy(month)}%`;
-  $("#totalWrong").textContent = allTotals.wrongCount;
+  $("#cardAccuracy").textContent = `${accuracy(modeTotals.flashcards)}%`;
+  $("#quizAccuracy").textContent = `${accuracy(modeTotals.quiz)}%`;
+  $("#matchAccuracy").textContent = `${accuracy(modeTotals.matching)}%`;
+  $("#totalAccuracy").textContent = `${accuracy(allTotals)}%`;
 
   renderDailyAnalysisBars();
   renderMonthlyAnalysisBars();
-  renderLearningSummary(allTotals);
+  renderLearningSummary(allTotals, month, modeTotals);
 }
 
 function periodStats(daysBack) {
   const days = Array.from({ length: daysBack + 1 }, (_, index) => todayKey(index - daysBack));
   return days.reduce((total, day) => {
-    const item = daily[day] || {};
+    const item = normalizeDailyStats(daily[day], day);
     total.studiedCount += item.studiedCount || 0;
     total.correctCount += item.correctCount || 0;
     total.wrongCount += item.wrongCount || 0;
@@ -929,9 +989,9 @@ function accuracy(stats) {
 
 function renderDailyAnalysisBars() {
   const days = Array.from({ length: 7 }, (_, index) => todayKey(index - 6));
-  const max = Math.max(1, ...days.map((day) => daily[day]?.studiedCount || 0));
+  const max = Math.max(1, ...days.map((day) => normalizeDailyStats(daily[day], day).studiedCount || 0));
   $("#dailyAnalysisBars").innerHTML = days.map((day) => {
-    const item = daily[day] || { studiedCount: 0, correctCount: 0, wrongCount: 0 };
+    const item = normalizeDailyStats(daily[day], day);
     const width = Math.max(4, (item.studiedCount / max) * 100);
     return analysisRowTemplate(day.slice(5), item, width);
   }).join("");
@@ -975,14 +1035,28 @@ function statsForMonth(monthKey) {
   return Object.entries(daily)
     .filter(([date]) => date.startsWith(monthKey))
     .reduce((total, [, item]) => {
-      total.studiedCount += item.studiedCount || 0;
-      total.correctCount += item.correctCount || 0;
-      total.wrongCount += item.wrongCount || 0;
+      const stats = normalizeDailyStats(item);
+      total.studiedCount += stats.studiedCount || 0;
+      total.correctCount += stats.correctCount || 0;
+      total.wrongCount += stats.wrongCount || 0;
       return total;
     }, { studiedCount: 0, correctCount: 0, wrongCount: 0 });
 }
 
-function renderLearningSummary(allTotals) {
+function modeStats(daysBack) {
+  const days = Array.from({ length: daysBack + 1 }, (_, index) => todayKey(index - daysBack));
+  return days.reduce((total, day) => {
+    const item = normalizeDailyStats(daily[day], day);
+    Object.keys(total).forEach((mode) => {
+      total[mode].studiedCount += item.modes[mode].studiedCount;
+      total[mode].correctCount += item.modes[mode].correctCount;
+      total[mode].wrongCount += item.modes[mode].wrongCount;
+    });
+    return total;
+  }, emptyModeStats());
+}
+
+function renderLearningSummary(allTotals, monthTotals, modeTotals) {
   const counts = vocabulary.reduce((total, item) => {
     const status = getProgress(item).status;
     total[status] = (total[status] || 0) + 1;
@@ -999,6 +1073,10 @@ function renderLearningSummary(allTotals) {
     ["Zor", counts.difficult || 0],
     ["Toplam calisma", allTotals.studiedCount],
     ["Genel dogruluk", `${accuracy(allTotals)}%`],
+    ["Aylik calisma", monthTotals.studiedCount],
+    ["Kart yanit", modeTotals.flashcards.studiedCount],
+    ["Quiz yanit", modeTotals.quiz.studiedCount],
+    ["Eslesme yanit", modeTotals.matching.studiedCount],
   ].map(([label, value]) => `
     <div class="summary-card">
       <span>${label}</span>
