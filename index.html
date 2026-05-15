@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#151515">
+    <title>Kelime Studio</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <section class="login-screen" id="loginScreen">
+      <form class="login-card" id="loginForm">
+        <img src="logo.svg" alt="" class="brand-mark">
+        <div>
+          <p class="eyebrow">Private Access</p>
+          <h1>Kelime Studio</h1>
+        </div>
+        <label>
+          Kullan&#305;c&#305; ad&#305;
+          <input id="usernameInput" type="text" autocomplete="username" required>
+        </label>
+        <label>
+          &#350;ifre
+          <input id="passwordInput" type="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit">Giri&#351; Yap</button>
+        <p id="loginMessage" class="status-line"></p>
+      </form>
+    </section>
+
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <img src="logo.svg" alt="" class="brand-mark">
+          <div>
+            <p class="eyebrow">YDS Practice</p>
+            <h1>Kelime Studio</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="ghost-button" id="logoutButton" type="button">&#199;&#305;k&#305;&#351;</button>
+          <button class="ghost-button" id="exportButton" type="button">D&#305;&#351;a Aktar</button>
+          <button class="danger-button" id="resetButton" type="button">S&#305;f&#305;rla</button>
+        </div>
+      </header>
+
+      <section class="import-band">
+        <div class="import-copy">
+          <span class="section-kicker">Kaynak</span>
+          <strong>Excel, Google Sheets veya CSV</strong>
+        </div>
+        <div class="import-controls">
+          <label class="file-control">
+            <span>Excel/CSV Y&#252;kle</span>
+            <input id="fileInput" type="file" accept=".xlsx,.xls,.csv,text/csv">
+          </label>
+          <form id="urlForm" class="url-form">
+            <input id="csvUrl" type="url" placeholder="Google Sheets CSV URL">
+            <button type="submit">Y&#252;kle</button>
+          </form>
+          <button id="sampleButton" class="secondary-button" type="button">&#214;rnek</button>
+          <a class="template-link" href="template.xlsx" download>Excel Template</a>
+        </div>
+        <p id="importStatus" class="status-line">Kelime listesi bekleniyor.</p>
+      </section>
+
+      <nav class="view-tabs" aria-label="Study views">
+        <button class="tab-button active" data-view="dashboard" type="button"><span>Panel</span></button>
+        <button class="tab-button" data-view="flashcards" type="button"><span>Kartlar</span></button>
+        <button class="tab-button" data-view="quiz" type="button"><span>Quiz</span></button>
+        <button class="tab-button" data-view="matching" type="button"><span>E&#351;le&#351;tir</span></button>
+        <button class="tab-button" data-view="analytics" type="button"><span>Analiz</span></button>
+        <button class="tab-button" data-view="words" type="button"><span>Liste</span></button>
+      </nav>
+
+      <section id="dashboard" class="view active">
+        <div class="metric-grid">
+          <article class="metric-card accent-teal">
+            <span>Bug&#252;n</span>
+            <strong id="dueCount">0</strong>
+          </article>
+          <article class="metric-card accent-blue">
+            <span>Bilinen</span>
+            <strong id="knownCount">0</strong>
+          </article>
+          <article class="metric-card accent-red">
+            <span>Zor</span>
+            <strong id="difficultCount">0</strong>
+          </article>
+          <article class="metric-card accent-yellow">
+            <span>&#199;al&#305;&#351;&#305;lan</span>
+            <strong id="studiedToday">0</strong>
+          </article>
+        </div>
+
+        <div class="panel-grid">
+          <section class="panel review-panel">
+            <div class="panel-heading">
+              <div>
+                <span class="section-kicker">Queue</span>
+                <h2>Tekrar S&#305;ras&#305;</h2>
+              </div>
+              <button id="startReviewButton" type="button">Tekrar Et</button>
+            </div>
+            <div id="todayList" class="compact-list"></div>
+          </section>
+          <section class="panel rhythm-panel">
+            <div class="panel-heading">
+              <div>
+                <span class="section-kicker">Stats</span>
+                <h2>Haftal&#305;k Ritim</h2>
+              </div>
+            </div>
+            <div id="weeklyBars" class="weekly-bars"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="flashcards" class="view">
+        <div class="study-layout">
+          <aside class="study-rail">
+            <button class="mode-button active" data-card-mode="due" type="button">Due</button>
+            <button class="mode-button" data-card-mode="new" type="button">New</button>
+            <button class="mode-button" data-card-mode="difficult" type="button">Difficult</button>
+            <button class="mode-button" data-card-mode="all" type="button">All</button>
+          </aside>
+          <article class="flashcard" id="flashcard">
+            <div class="swipe-hint left">Bilmedim</div>
+            <div class="swipe-hint right">Bildim</div>
+            <p class="card-status" id="cardStatus">Kelime listesi bekleniyor.</p>
+            <h2 id="cardWord">YDS</h2>
+            <p id="cardEnglish" class="muted hidden"></p>
+            <div class="card-actions">
+              <button id="revealButton" type="button">G&#246;ster</button>
+              <button id="wrongButton" class="danger-button" type="button">Bilmiyorum</button>
+              <button id="rightButton" type="button">Biliyorum</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="quiz" class="view">
+        <section class="panel quiz-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="section-kicker">Test</span>
+              <h2 id="quizPrompt">Quiz</h2>
+            </div>
+            <button id="nextQuizButton" type="button">Sonraki</button>
+          </div>
+          <div id="quizOptions" class="option-grid"></div>
+          <p id="quizFeedback" class="status-line"></p>
+        </section>
+      </section>
+
+      <section id="matching" class="view">
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <span class="section-kicker">Pairs</span>
+              <h2>E&#351;le&#351;tirme</h2>
+            </div>
+            <button id="newMatchButton" type="button">Yeni Set</button>
+          </div>
+          <div class="match-board">
+            <div id="matchWords" class="match-column"></div>
+            <div id="matchMeanings" class="match-column"></div>
+          </div>
+          <p id="matchFeedback" class="status-line"></p>
+        </section>
+      </section>
+
+      <section id="analytics" class="view">
+        <div class="analytics-grid">
+          <article class="metric-card accent-teal">
+            <span>G&#252;nl&#252;k Do&#287;ruluk</span>
+            <strong id="dailyAccuracy">0%</strong>
+          </article>
+          <article class="metric-card accent-blue">
+            <span>Haftal&#305;k Do&#287;ruluk</span>
+            <strong id="weeklyAccuracy">0%</strong>
+          </article>
+          <article class="metric-card accent-yellow">
+            <span>Ayl&#305;k Do&#287;ruluk</span>
+            <strong id="monthlyAccuracy">0%</strong>
+          </article>
+          <article class="metric-card accent-red">
+            <span>Toplam Yanl&#305;&#351;</span>
+            <strong id="totalWrong">0</strong>
+          </article>
+        </div>
+        <div class="panel-grid analytics-panels">
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <span class="section-kicker">Daily</span>
+                <h2>Son 7 G&#252;n</h2>
+              </div>
+            </div>
+            <div id="dailyAnalysisBars" class="analysis-bars"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <span class="section-kicker">Monthly</span>
+                <h2>Son 6 Ay</h2>
+              </div>
+            </div>
+            <div id="monthlyAnalysisBars" class="analysis-bars"></div>
+          </section>
+        </div>
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <span class="section-kicker">Summary</span>
+              <h2>&#214;&#287;renme Durumu</h2>
+            </div>
+          </div>
+          <div id="learningSummary" class="summary-grid"></div>
+        </section>
+      </section>
+
+      <section id="words" class="view">
+        <section class="panel">
+          <div class="word-toolbar">
+            <input id="searchInput" type="search" placeholder="Kelime veya anlam ara">
+            <select id="statusFilter">
+              <option value="all">T&#252;m Durumlar</option>
+              <option value="new">New</option>
+              <option value="learning">Learning</option>
+              <option value="known">Known</option>
+              <option value="difficult">Difficult</option>
+            </select>
+          </div>
+          <div id="wordList" class="word-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
