@@ -875,21 +875,30 @@ function nextCard(forceAdvance = true) {
   const candidates = currentCard ? pool.filter((item) => item.id !== currentCard.id) : pool;
   const source = candidates.length ? candidates : pool;
 
-  // Score each word: lower = should appear sooner
-  // Add a random jitter (0–2) so words with similar scores shuffle
-  const scored = source.map((item) => {
-    const p = getProgress(item);
-    const daysSinceSeen = p.lastSeenAt
-      ? (Date.now() - new Date(p.lastSeenAt).getTime()) / 86400000
-      : 999;
-    const score = (p.correctCount * 2) - Math.min(daysSinceSeen, 10) + (Math.random() * 2.5);
-    return { item, score };
-  });
+  // Separate into buckets: unseen (never studied) vs seen
+  const unseen = source.filter((item) => !getProgress(item).lastSeenAt);
+  const seen   = source.filter((item) =>  getProgress(item).lastSeenAt);
 
-  // Pick from the lower-scored half so weak words still appear more often, but shuffled
-  scored.sort((a, b) => a.score - b.score);
-  const pickFrom = scored.slice(0, Math.max(1, Math.ceil(scored.length * 0.45)));
-  currentCard = pickFrom[Math.floor(Math.random() * pickFrom.length)].item;
+  let pickFrom;
+  if (seen.length === 0) {
+    // All new — pick completely at random, no alphabetical bias
+    pickFrom = source;
+  } else if (unseen.length > 0 && Math.random() < 0.25) {
+    // 25% chance: introduce a random unseen word
+    pickFrom = unseen;
+  } else {
+    // Pick from seen words weighted by weakness (low correct, long ago)
+    const scored = seen.map((item) => {
+      const p = getProgress(item);
+      const daysSinceSeen = (Date.now() - new Date(p.lastSeenAt).getTime()) / 86400000;
+      const score = (p.correctCount * 3) - Math.min(daysSinceSeen, 14) + (Math.random() * 3);
+      return { item, score };
+    });
+    scored.sort((a, b) => a.score - b.score);
+    pickFrom = scored.slice(0, Math.max(1, Math.ceil(scored.length * 0.4))).map((s) => s.item);
+  }
+
+  currentCard = pickFrom[Math.floor(Math.random() * pickFrom.length)];
   updateCard(currentCard);
 }
 
