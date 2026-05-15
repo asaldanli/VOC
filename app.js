@@ -130,8 +130,18 @@ function bindEvents() {
   $("#flashcard").addEventListener("pointerup", endCardPointer);
   $("#flashcard").addEventListener("pointercancel", cancelCardPointer);
   $("#revealButton").addEventListener("click", revealCard);
-  $("#wrongButton").addEventListener("click", () => answerCard(false));
-  $("#rightButton").addEventListener("click", () => answerCard(true));
+  $("#wrongButton").addEventListener("click", () => {
+    const card = $("#flashcard");
+    card.style.transition = "transform 180ms ease";
+    card.style.transform = "translateX(-260px) translateY(-90px) rotate(-14deg)";
+    window.setTimeout(() => { card.style.transition = ""; answerCard(false); }, 170);
+  });
+  $("#rightButton").addEventListener("click", () => {
+    const card = $("#flashcard");
+    card.style.transition = "transform 180ms ease";
+    card.style.transform = "translateX(260px) translateY(-90px) rotate(14deg)";
+    window.setTimeout(() => { card.style.transition = ""; answerCard(true); }, 170);
+  });
   $("#nextQuizButton").addEventListener("click", nextQuiz);
   $("#newMatchButton").addEventListener("click", newMatchSet);
   $("#searchInput").addEventListener("input", renderWords);
@@ -204,7 +214,7 @@ function animateKeyboardSwipe(direction) {
   const card = $("#flashcard");
   const isRight = direction === "right";
   card.classList.add(isRight ? "swiping-right" : "swiping-left");
-  card.style.transform = `translateX(${isRight ? 140 : -140}px) rotate(${isRight ? 6 : -6}deg)`;
+  card.style.transform = `translateX(${isRight ? 160 : -160}px) translateY(-60px) rotate(${isRight ? 12 : -12}deg)`;
   window.setTimeout(() => {
     answerCard(isRight);
   }, 180);
@@ -906,8 +916,10 @@ function moveCardPointer(event) {
   }
 
   if (Math.abs(deltaX) > 10) {
-    const rotate = Math.max(-7, Math.min(7, deltaX / 20));
-    card.style.transform = `translateX(${deltaX}px) rotate(${rotate}deg)`;
+    // Move diagonally: follow X, lift upward proportionally (max -80px up)
+    const liftY = Math.abs(deltaX) > 30 ? Math.max(-80, -(Math.abs(deltaX) - 30) * 0.7) : 0;
+    const rotate = Math.max(-12, Math.min(12, deltaX / 16));
+    card.style.transform = `translateX(${deltaX}px) translateY(${liftY}px) rotate(${rotate}deg)`;
     card.classList.toggle("swiping-right", deltaX > 50);
     card.classList.toggle("swiping-left", deltaX < -50);
   }
@@ -917,10 +929,20 @@ function endCardPointer(event) {
   if (!cardPointer || cardPointer.id !== event.pointerId) return;
   const deltaX = event.clientX - cardPointer.x;
   const deltaY = event.clientY - cardPointer.y;
-  const shouldSwipe = Math.abs(deltaX) > 90 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1;
+  // Accept swipe if X is dominant and enough distance (Y going up is allowed)
+  const upwardBoost = deltaY < 0 ? Math.abs(deltaY) * 0.4 : 0;
+  const shouldSwipe = (Math.abs(deltaX) + upwardBoost) > 90 && Math.abs(deltaX) > Math.abs(deltaY) * 0.7;
 
   if (shouldSwipe) {
-    answerCard(deltaX > 0);
+    const goRight = deltaX > 0;
+    const card = $("#flashcard");
+    // Fly off diagonally: continue in swipe direction, lift upward
+    card.style.transition = "transform 180ms ease";
+    card.style.transform = `translateX(${goRight ? 260 : -260}px) translateY(-90px) rotate(${goRight ? 14 : -14}deg)`;
+    window.setTimeout(() => {
+      card.style.transition = "";
+      answerCard(goRight);
+    }, 170);
   } else if (!cardPointer.moved) {
     revealCard();
   } else {

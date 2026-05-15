@@ -964,9 +964,26 @@ h2 {
   .panel-grid,
   .study-layout,
   .option-grid,
-  .match-board,
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* Match board stays 2-col on mobile — word left, meaning right */
+  .match-board {
+    gap: 8px;
+  }
+
+  .match-column {
+    gap: 6px;
+  }
+
+  /* Smaller match cards so 6 pairs fit without scrolling */
+  .match-card {
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.2;
+    min-height: 48px;
+    padding: 8px 10px;
   }
 
   .panel-heading {
