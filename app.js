@@ -51,6 +51,7 @@ let cloudDb = null;
 let cloudRef = null;
 let cloudListenerAttached = false;
 let applyingRemoteData = false;
+let lastResetAt = null;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -374,32 +375,38 @@ function attachCloudListener() {
   if (cloudListenerAttached || !cloudRef) return;
   cloudListenerAttached = true;
   cloudRef.on("value", (snap) => {
-    if (applyingRemoteData) return;
     const remote = snap.val();
     const remoteData = remote?.data || (remote?.vocabulary ? remote : null);
     const hasContent = remoteData?.vocabulary?.length > 0 || Object.keys(remoteData?.progress || {}).length > 0;
     const isReset = Boolean(remoteData?.resetAt);
     if (!remoteData || (!hasContent && !isReset)) return;
 
-    applyingRemoteData = true;
+    // Ignore the echo of our own reset write
+    if (isReset && remoteData.resetAt === lastResetAt) return;
+
     if (isReset) {
-      // Honour intentional reset from another device
+      // Reset from another device - honour it
       const localSavedAt = loadJson(STORAGE_KEYS.snapshot, null)?.savedAt || null;
       const resetIsNewer = !localSavedAt || remoteData.resetAt > localSavedAt;
       if (resetIsNewer) {
+        lastResetAt = remoteData.resetAt; // prevent re-processing
         vocabulary = Array.isArray(remoteData.vocabulary) && remoteData.vocabulary.length > 0 ? remoteData.vocabulary : [];
         progress = (remoteData.vocabulary?.length && remoteData.progress) ? remoteData.progress : {};
         daily = (remoteData.daily && Object.keys(remoteData.daily).length) ? remoteData.daily : {};
         saveStudyData({ sync: false });
         renderAll();
+        updateSyncStatus("Cloud Sync: Guncel");
       }
     } else {
+      // Normal data update from another device
+      if (applyingRemoteData) return;
+      applyingRemoteData = true;
       mergeBackupData(remoteData);
       saveStudyData({ sync: false });
       renderAll();
+      applyingRemoteData = false;
+      updateSyncStatus("Cloud Sync: Guncel");
     }
-    applyingRemoteData = false;
-    updateSyncStatus("Cloud Sync: Guncel");
   }, () => {
     updateSyncStatus("Cloud Sync: Hata");
   });
@@ -1443,15 +1450,13 @@ function handleResetProgressOnly() {
     progress[item.id] = createProgress(item.id);
   });
   [STORAGE_KEYS.progress, STORAGE_KEYS.daily, STORAGE_KEYS.snapshot].forEach((key) => localStorage.removeItem(key));
-  // Block the cloud listener so it doesn't restore old data while we write
   const resetAt = new Date().toISOString();
-  applyingRemoteData = true;
+  lastResetAt = resetAt;  // listener will ignore events triggered by this reset
   saveStudyData({ sync: false });
   renderAll();
   updateCard(null);
   setStatus(`İlerleme sıfırlandı. ${vocabulary.length} kelime listede kalmaya devam ediyor.`);
-  // Write the reset state to Firebase with a resetAt timestamp so other devices honour it
-  saveToCloud({ resetAt }).finally(() => { applyingRemoteData = false; });
+  saveToCloud({ resetAt });
 }
 
 function handleResetEverything() {
@@ -1473,9 +1478,8 @@ function handleResetEverything() {
     STORAGE_KEYS.daily,
     STORAGE_KEYS.snapshot,
   ].forEach((key) => localStorage.removeItem(key));
-  // Block the cloud listener so it doesn't restore old data while we write
   const resetAt = new Date().toISOString();
-  applyingRemoteData = true;
+  lastResetAt = resetAt;  // listener will ignore events triggered by this reset
   saveStudyData({ sync: false });
   renderAll();
   updateCard(null);
@@ -1483,8 +1487,7 @@ function handleResetEverything() {
   $("#matchWords").innerHTML = "";
   $("#matchMeanings").innerHTML = "";
   setStatus("Kelime listesi bekleniyor.");
-  // Write the reset state to Firebase with a resetAt timestamp so other devices honour it
-  saveToCloud({ resetAt }).finally(() => { applyingRemoteData = false; });
+  saveToCloud({ resetAt });
 }
 
 // ── Focus Mode (Difficult words sprint) ──────────────────
