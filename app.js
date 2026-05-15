@@ -228,15 +228,17 @@ function saveStudyData(options = {}) {
   if (shouldSync) queueCloudSave();
 }
 
-function getStudyPayload() {
+function getStudyPayload(options = {}) {
   migrateDailyStats();
-  return {
+  const payload = {
     version: 2,
     savedAt: new Date().toISOString(),
     vocabulary,
     progress,
     daily,
   };
+  if (options.resetAt) payload.resetAt = options.resetAt;
+  return payload;
 }
 
 function hasStudyData() {
@@ -325,7 +327,22 @@ async function syncFromFirebase() {
     const localVocabCount = vocabulary.length;
     const localProgressCount = Object.keys(progress).length;
 
-    if (hadRemoteData) {
+    // Check if remote signals a reset that happened after our last local save
+    const localSavedAt = loadJson(STORAGE_KEYS.snapshot, null)?.savedAt || null;
+    const remoteResetAt = remotePayload?.resetAt || null;
+    const resetIsNewer = remoteResetAt && (!localSavedAt || remoteResetAt > localSavedAt);
+
+    if (resetIsNewer) {
+      // Remote was intentionally reset — wipe local to match
+      vocabulary = Array.isArray(remotePayload.vocabulary) && remotePayload.vocabulary.length > 0
+        ? remotePayload.vocabulary
+        : [];
+      progress = (remotePayload.vocabulary?.length && remotePayload.progress) ? remotePayload.progress : {};
+      daily = (remotePayload.daily && Object.keys(remotePayload.daily).length) ? remotePayload.daily : {};
+      saveStudyData({ sync: false });
+      attachCloudListener();
+      updateSyncStatus("Cloud Sync: Guncel");
+    } else if (hadRemoteData) {
       // Remote data exists: always merge remote INTO local (remote wins on conflicts)
       mergeBackupData(remotePayload);
       saveStudyData({ sync: false });
@@ -360,13 +377,27 @@ function attachCloudListener() {
     if (applyingRemoteData) return;
     const remote = snap.val();
     const remoteData = remote?.data || (remote?.vocabulary ? remote : null);
-    if (!remoteData || (!remoteData.vocabulary?.length && !Object.keys(remoteData.progress || {}).length && !Object.keys(remoteData.daily || {}).length)) return;
+    const hasContent = remoteData?.vocabulary?.length > 0 || Object.keys(remoteData?.progress || {}).length > 0;
+    const isReset = Boolean(remoteData?.resetAt);
+    if (!remoteData || (!hasContent && !isReset)) return;
 
-    // Remote has real data: merge it in, but don't write back (avoid overwrite loop)
     applyingRemoteData = true;
-    mergeBackupData(remoteData);
-    saveStudyData({ sync: false });
-    renderAll();
+    if (isReset) {
+      // Honour intentional reset from another device
+      const localSavedAt = loadJson(STORAGE_KEYS.snapshot, null)?.savedAt || null;
+      const resetIsNewer = !localSavedAt || remoteData.resetAt > localSavedAt;
+      if (resetIsNewer) {
+        vocabulary = Array.isArray(remoteData.vocabulary) && remoteData.vocabulary.length > 0 ? remoteData.vocabulary : [];
+        progress = (remoteData.vocabulary?.length && remoteData.progress) ? remoteData.progress : {};
+        daily = (remoteData.daily && Object.keys(remoteData.daily).length) ? remoteData.daily : {};
+        saveStudyData({ sync: false });
+        renderAll();
+      }
+    } else {
+      mergeBackupData(remoteData);
+      saveStudyData({ sync: false });
+      renderAll();
+    }
     applyingRemoteData = false;
     updateSyncStatus("Cloud Sync: Guncel");
   }, () => {
@@ -374,7 +405,7 @@ function attachCloudListener() {
   });
 }
 
-async function saveToFirebase() {
+async function saveToFirebase(options = {}) {
   const config = getCloudConfig();
   if (!config.isConfigured || localStorage.getItem(STORAGE_KEYS.auth) !== "true") return;
   const db = initCloud();
@@ -385,7 +416,7 @@ async function saveToFirebase() {
     applyingRemoteData = true;
     await cloudRef.update({
       username: AUTH.username,
-      data: getStudyPayload(),
+      data: getStudyPayload(options),
       updatedAt: firebase.database.ServerValue.TIMESTAMP,
     });
     applyingRemoteData = false;
@@ -400,8 +431,8 @@ async function syncFromCloud() {
   return syncFromFirebase();
 }
 
-async function saveToCloud() {
-  return saveToFirebase();
+async function saveToCloud(options = {}) {
+  return saveToFirebase(options);
 }
 
 function restoreStudyDataIfNeeded() {
@@ -434,8 +465,10 @@ function importProgressBackup(jsonText, fileName) {
 }
 
 function mergeBackupData(backup) {
-  // Safety guard: never merge an empty or invalid payload
-  if (!backup || !Array.isArray(backup.vocabulary) || backup.vocabulary.length === 0) return;
+  // Safety guard: never merge an empty or invalid payload (unless it's an intentional reset)
+  if (!backup) return;
+  if (!Array.isArray(backup.vocabulary)) return;
+  if (backup.vocabulary.length === 0 && !backup.resetAt) return;
 
   const existingById = new Map(vocabulary.map((item) => [item.id, item]));
   const existingWordToId = new Map(vocabulary.map((item) => [normalizeWordKey(item.word), item.id]));
@@ -1411,13 +1444,14 @@ function handleResetProgressOnly() {
   });
   [STORAGE_KEYS.progress, STORAGE_KEYS.daily, STORAGE_KEYS.snapshot].forEach((key) => localStorage.removeItem(key));
   // Block the cloud listener so it doesn't restore old data while we write
+  const resetAt = new Date().toISOString();
   applyingRemoteData = true;
   saveStudyData({ sync: false });
   renderAll();
   updateCard(null);
   setStatus(`İlerleme sıfırlandı. ${vocabulary.length} kelime listede kalmaya devam ediyor.`);
-  // Write the reset state to Firebase, then re-enable the listener
-  saveToCloud().finally(() => { applyingRemoteData = false; });
+  // Write the reset state to Firebase with a resetAt timestamp so other devices honour it
+  saveToCloud({ resetAt }).finally(() => { applyingRemoteData = false; });
 }
 
 function handleResetEverything() {
@@ -1440,6 +1474,7 @@ function handleResetEverything() {
     STORAGE_KEYS.snapshot,
   ].forEach((key) => localStorage.removeItem(key));
   // Block the cloud listener so it doesn't restore old data while we write
+  const resetAt = new Date().toISOString();
   applyingRemoteData = true;
   saveStudyData({ sync: false });
   renderAll();
@@ -1448,8 +1483,8 @@ function handleResetEverything() {
   $("#matchWords").innerHTML = "";
   $("#matchMeanings").innerHTML = "";
   setStatus("Kelime listesi bekleniyor.");
-  // Write the reset state to Firebase, then re-enable the listener
-  saveToCloud().finally(() => { applyingRemoteData = false; });
+  // Write the reset state to Firebase with a resetAt timestamp so other devices honour it
+  saveToCloud({ resetAt }).finally(() => { applyingRemoteData = false; });
 }
 
 // ── Focus Mode (Difficult words sprint) ──────────────────
