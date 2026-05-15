@@ -871,12 +871,25 @@ function nextCard(forceAdvance = true) {
     return;
   }
 
-  const sorted = [...pool].sort((a, b) => {
-    const pa = getProgress(a);
-    const pb = getProgress(b);
-    return (pa.lastSeenAt || "").localeCompare(pb.lastSeenAt || "") || pa.correctCount - pb.correctCount;
+  // Exclude current card so we never show the same word twice in a row
+  const candidates = currentCard ? pool.filter((item) => item.id !== currentCard.id) : pool;
+  const source = candidates.length ? candidates : pool;
+
+  // Score each word: lower = should appear sooner
+  // Add a random jitter (0–2) so words with similar scores shuffle
+  const scored = source.map((item) => {
+    const p = getProgress(item);
+    const daysSinceSeen = p.lastSeenAt
+      ? (Date.now() - new Date(p.lastSeenAt).getTime()) / 86400000
+      : 999;
+    const score = (p.correctCount * 2) - Math.min(daysSinceSeen, 10) + (Math.random() * 2.5);
+    return { item, score };
   });
-  currentCard = sorted[0];
+
+  // Pick from the lower-scored half so weak words still appear more often, but shuffled
+  scored.sort((a, b) => a.score - b.score);
+  const pickFrom = scored.slice(0, Math.max(1, Math.ceil(scored.length * 0.45)));
+  currentCard = pickFrom[Math.floor(Math.random() * pickFrom.length)].item;
   updateCard(currentCard);
 }
 
