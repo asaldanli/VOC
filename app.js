@@ -1406,15 +1406,18 @@ function handleResetProgressOnly() {
   downloadProgressBackup("before-progress-reset");
   progress = {};
   daily = {};
-  // Reset progress for all vocabulary items
   vocabulary.forEach((item) => {
     progress[item.id] = createProgress(item.id);
   });
   [STORAGE_KEYS.progress, STORAGE_KEYS.daily, STORAGE_KEYS.snapshot].forEach((key) => localStorage.removeItem(key));
-  saveStudyData();
+  // Block the cloud listener so it doesn't restore old data while we write
+  applyingRemoteData = true;
+  saveStudyData({ sync: false });
   renderAll();
   updateCard(null);
   setStatus(`İlerleme sıfırlandı. ${vocabulary.length} kelime listede kalmaya devam ediyor.`);
+  // Write the reset state to Firebase, then re-enable the listener
+  saveToCloud().finally(() => { applyingRemoteData = false; });
 }
 
 function handleResetEverything() {
@@ -1436,13 +1439,17 @@ function handleResetEverything() {
     STORAGE_KEYS.daily,
     STORAGE_KEYS.snapshot,
   ].forEach((key) => localStorage.removeItem(key));
-  saveStudyData();
+  // Block the cloud listener so it doesn't restore old data while we write
+  applyingRemoteData = true;
+  saveStudyData({ sync: false });
   renderAll();
   updateCard(null);
   $("#quizOptions").innerHTML = "";
   $("#matchWords").innerHTML = "";
   $("#matchMeanings").innerHTML = "";
   setStatus("Kelime listesi bekleniyor.");
+  // Write the reset state to Firebase, then re-enable the listener
+  saveToCloud().finally(() => { applyingRemoteData = false; });
 }
 
 // ── Focus Mode (Difficult words sprint) ──────────────────
