@@ -91,7 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
   requestPersistentStorage();
   applyTheme();
 
-  const savedUser = localStorage.getItem("yds-vocab-auth");
+  const savedUser = sessionStorage.getItem("yds-vocab-auth");
   if (savedUser && USERS[savedUser]) {
     // Already logged in: restore session
     AUTH = { username: USERS[savedUser].username, password: USERS[savedUser].password };
@@ -219,7 +219,7 @@ async function handleLogin(selectedUsername, password) {
 
   // 1. Set auth immediately
   AUTH = { username: user.username, password: user.password };
-  localStorage.setItem("yds-vocab-auth", user.username);
+  sessionStorage.setItem("yds-vocab-auth", user.username);
 
   // 2. Load local data
   loadUserData();
@@ -239,7 +239,7 @@ async function handleLogin(selectedUsername, password) {
 
 function logout() {
   downloadProgressBackup("logout-backup");
-  localStorage.removeItem("yds-vocab-auth");
+  sessionStorage.removeItem("yds-vocab-auth");
   vocabulary = [];
   progress = {};
   daily = {};
@@ -249,7 +249,7 @@ function logout() {
 }
 
 function applyAuthState() {
-  const isLoggedIn = Boolean(localStorage.getItem("yds-vocab-auth"));
+  const isLoggedIn = Boolean(sessionStorage.getItem("yds-vocab-auth"));
   $("#loginScreen").classList.toggle("hidden", isLoggedIn);
   document.body.classList.toggle("is-locked", !isLoggedIn);
   updateSyncStatus();
@@ -426,7 +426,7 @@ function updateSyncStatus(message) {
 }
 
 function queueCloudSave() {
-  if (!localStorage.getItem("yds-vocab-auth")) return;
+  if (!sessionStorage.getItem("yds-vocab-auth")) return;
   if (!getCloudConfig().isConfigured) {
     updateSyncStatus();
     return;
@@ -548,7 +548,7 @@ function attachCloudListener() {
 
 async function saveToFirebase(options = {}) {
   const config = getCloudConfig();
-  if (!config.isConfigured || !localStorage.getItem("yds-vocab-auth")) return;
+  if (!config.isConfigured || !sessionStorage.getItem("yds-vocab-auth")) return;
   const db = initCloud();
   if (!db || !cloudRef) return;
   updateSyncStatus("Cloud Sync: Kaydediliyor");
