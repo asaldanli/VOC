@@ -90,16 +90,21 @@ document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
   requestPersistentStorage();
   applyTheme();
-  // Restore logged-in user if any
+
   const savedUser = localStorage.getItem("yds-vocab-auth");
   if (savedUser && USERS[savedUser]) {
+    // Already logged in: restore session
     AUTH = { username: USERS[savedUser].username, password: USERS[savedUser].password };
     loadUserData();
     restoreStudyDataIfNeeded();
-    applyAuthState();
+    $("#loginScreen").classList.add("hidden");
+    document.body.classList.remove("is-locked");
+    updateSyncStatus();
     renderAll();
-    syncFromCloud().then(renderAll);
+    syncFromCloud().then(renderAll).catch(() => {});
   } else {
+    // Not logged in: show user selection
+    showUserSelection();
     applyAuthState();
     renderAll();
   }
@@ -212,13 +217,23 @@ async function handleLogin(selectedUsername, password) {
     return false;
   }
 
+  // 1. Set auth immediately
   AUTH = { username: user.username, password: user.password };
   localStorage.setItem("yds-vocab-auth", user.username);
+
+  // 2. Load local data
   loadUserData();
   restoreStudyDataIfNeeded();
-  await syncFromCloud();
-  applyAuthState();
+
+  // 3. Show the app right away — don't wait for cloud
+  $("#loginScreen").classList.add("hidden");
+  document.body.classList.remove("is-locked");
+  updateSyncStatus();
   renderAll();
+
+  // 4. Sync in the background (non-blocking)
+  syncFromCloud().then(renderAll).catch(() => {});
+
   return true;
 }
 
@@ -230,13 +245,13 @@ function logout() {
   daily = {};
   recentCardIds = [];
   applyAuthState();
+  showUserSelection();
 }
 
 function applyAuthState() {
   const isLoggedIn = Boolean(localStorage.getItem("yds-vocab-auth"));
   $("#loginScreen").classList.toggle("hidden", isLoggedIn);
   document.body.classList.toggle("is-locked", !isLoggedIn);
-  if (!isLoggedIn) showUserSelection();
   updateSyncStatus();
 }
 
