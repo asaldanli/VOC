@@ -63,7 +63,9 @@ let vocabulary = [];
 let progress = {};
 let daily = {};
 let activeView = "dashboard";
-let cardMode = "due";
+let cardMode = "all";      // Kartlar modu: "all" | "difficult"
+let quizMode = "all";      // Quiz modu:    "all" | "difficult"
+let matchMode = "all";     // Eşleştir modu:"all" | "difficult"
 let currentCard = null;
 // Session buffer: prevents recently-shown cards from appearing again too soon
 let recentCardIds = [];        // genel "son görülen" tamponu
@@ -157,11 +159,29 @@ function bindEvents() {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
 
-  $$(".mode-button").forEach((button) => {
+  $$(".mode-button[data-section='cards']").forEach((button) => {
     button.addEventListener("click", () => {
-      cardMode = button.dataset.cardMode;
-      $$(".mode-button").forEach((item) => item.classList.toggle("active", item === button));
+      cardMode = button.dataset.mode;
+      $$(".mode-button[data-section='cards']").forEach((b) => b.classList.toggle("active", b === button));
+      recentCardIds = [];
+      wrongCooldownIds = [];
       nextCard();
+    });
+  });
+
+  $$(".mode-button[data-section='quiz']").forEach((button) => {
+    button.addEventListener("click", () => {
+      quizMode = button.dataset.mode;
+      $$(".mode-button[data-section='quiz']").forEach((b) => b.classList.toggle("active", b === button));
+      nextQuiz();
+    });
+  });
+
+  $$(".mode-button[data-section='match']").forEach((button) => {
+    button.addEventListener("click", () => {
+      matchMode = button.dataset.mode;
+      $$(".mode-button[data-section='match']").forEach((b) => b.classList.toggle("active", b === button));
+      newMatchSet();
     });
   });
 
@@ -208,9 +228,9 @@ function bindEvents() {
   document.addEventListener("keydown", handleKeyboardShortcuts);
 }
 
-async function handleLogin(selectedUsername, password) {
+async function handleLogin(selectedUsername) {
   const user = USERS[selectedUsername];
-  if (!user || password !== user.password) {
+  if (!user) {
     return false;
   }
 
@@ -258,32 +278,18 @@ let pendingLoginUsername = null;
 function showUserSelection() {
   $("#userSelectionStep").classList.remove("hidden");
   $("#passwordStep").classList.add("hidden");
-  $("#loginPasswordInput").value = "";
-  $("#loginPasswordMessage").textContent = "";
   pendingLoginUsername = null;
 }
 
 function selectUser(username) {
   const user = USERS[username];
   if (!user) return;
-  pendingLoginUsername = username;
-  // Populate password step
-  $("#passwordStepName").textContent = user.displayName;
-  $("#userSelectionStep").classList.add("hidden");
-  $("#passwordStep").classList.remove("hidden");
-  $("#loginPasswordInput").focus();
+  // Doğrudan giriş yap — şifre sorma
+  handleLogin(username);
 }
 
 async function handlePasswordSubmit(event) {
   event.preventDefault();
-  if (!pendingLoginUsername) return;
-  const password = $("#loginPasswordInput").value;
-  const ok = await handleLogin(pendingLoginUsername, password);
-  if (!ok) {
-    $("#loginPasswordMessage").textContent = "Şifre hatalı.";
-    $("#loginPasswordInput").value = "";
-    $("#loginPasswordInput").focus();
-  }
 }
 
 function toggleTheme() {
@@ -960,10 +966,8 @@ function isDue(item) {
 }
 
 function wordsForMode(mode) {
-  if (mode === "all") return vocabulary;
-  if (mode === "new") return vocabulary.filter((item) => getProgress(item).status === "new");
   if (mode === "difficult") return vocabulary.filter((item) => getProgress(item).status === "difficult");
-  return vocabulary.filter(isDue);
+  return vocabulary; // "all"
 }
 
 function nextCard(forceAdvance = true) {
@@ -1183,12 +1187,17 @@ function nextQuiz() {
     return;
   }
 
-  const duePool = wordsForMode("due");
-  const answer = randomItem(duePool.length ? duePool : vocabulary);
-  const options = shuffle([
-    answer,
-    ...shuffle(vocabulary.filter((item) => item.id !== answer.id)).slice(0, 3),
-  ]);
+  const pool = wordsForMode(quizMode);
+  if (pool.length < 4) {
+    $("#quizPrompt").textContent = "Bu modda en az 4 kelime gerekli.";
+    $("#quizOptions").innerHTML = "";
+    return;
+  }
+
+  const answer = randomItem(pool);
+  // Yanlış seçenekler tüm kelimelerden gelsin
+  const distractors = shuffle(vocabulary.filter((item) => item.id !== answer.id)).slice(0, 3);
+  const options = shuffle([answer, ...distractors]);
 
   currentQuiz = answer;
   $("#quizPrompt").textContent = `${answer.word} = ?`;
@@ -1233,12 +1242,20 @@ function newMatchSet() {
     return;
   }
 
-  const pool = shuffle(wordsForMode("due").length ? wordsForMode("due") : vocabulary).slice(0, 4);
-  currentMatchIds = new Set(pool.map((item) => item.id));
-  $("#matchWords").innerHTML = pool.map((item) => (
+  const pool = wordsForMode(matchMode);
+  if (pool.length < 4) {
+    $("#matchWords").innerHTML = "";
+    $("#matchMeanings").innerHTML = "";
+    $("#matchFeedback").textContent = "Bu modda en az 4 kelime gerekli.";
+    return;
+  }
+
+  const selected = shuffle(pool).slice(0, 4);
+  currentMatchIds = new Set(selected.map((item) => item.id));
+  $("#matchWords").innerHTML = selected.map((item) => (
     `<button class="match-card draggable-card" type="button" draggable="true" data-id="${escapeHtml(item.id)}">${escapeHtml(item.word)}</button>`
   )).join("");
-  $("#matchMeanings").innerHTML = shuffle(pool).map((item) => (
+  $("#matchMeanings").innerHTML = shuffle(selected).map((item) => (
     `<button class="match-card drop-zone" type="button" data-id="${escapeHtml(item.id)}">${escapeHtml(item.englishMeaning)}</button>`
   )).join("");
 
@@ -1412,20 +1429,70 @@ function renderWeeklyBars() {
 }
 
 function renderAnalytics() {
-  if (!$("#cardAccuracy")) return;
+  if (!$("#analyticsContainer")) return;
 
-  const month = periodStats(29);
-  const allTotals = periodStats(3650);
-  const modeTotals = modeStats(3650);
+  const days = Array.from({ length: 15 }, (_, i) => todayKey(i - 14));
+  const modes = ["flashcards", "quiz", "matching"];
+  const modeLabels = { flashcards: "Kartlar", quiz: "Quiz", matching: "Eşleştir" };
+  const modeColors = { flashcards: "var(--teal)", quiz: "var(--blue)", matching: "var(--yellow)" };
 
-  $("#cardAccuracy").textContent = `${accuracy(modeTotals.flashcards)}%`;
-  $("#quizAccuracy").textContent = `${accuracy(modeTotals.quiz)}%`;
-  $("#matchAccuracy").textContent = `${accuracy(modeTotals.matching)}%`;
-  $("#totalAccuracy").textContent = `${accuracy(allTotals)}%`;
+  // Per-mode günlük veri
+  const modeData = {};
+  modes.forEach((mode) => {
+    modeData[mode] = days.map((day) => {
+      const s = normalizeDailyStats(daily[day], day).modes[mode];
+      return { day, studied: s.studiedCount, correct: s.correctCount, wrong: s.wrongCount };
+    });
+  });
 
-  renderDailyAnalysisBars();
-  renderMonthlyAnalysisBars();
-  renderLearningSummary(allTotals, month, modeTotals);
+  // Maksimum değer (bar ölçeği için)
+  const allStudied = days.map((day) => {
+    const s = normalizeDailyStats(daily[day], day);
+    return s.studiedCount;
+  });
+  const maxVal = Math.max(1, ...allStudied);
+
+  // HTML oluştur
+  let html = `<div class="analytics-15-grid">`;
+
+  modes.forEach((mode) => {
+    const totals = modeData[mode].reduce((a, d) => ({
+      studied: a.studied + d.studied,
+      correct: a.correct + d.correct,
+      wrong: a.wrong + d.wrong,
+    }), { studied: 0, correct: 0, wrong: 0 });
+    const acc = totals.studied ? Math.round((totals.correct / totals.studied) * 100) : 0;
+
+    html += `
+      <section class="panel analytics-mode-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="section-kicker" style="color:${modeColors[mode]}">${modeLabels[mode]}</span>
+            <h2>${acc}% doğru · ${totals.studied} soru</h2>
+          </div>
+        </div>
+        <div class="analytics-day-bars">`;
+
+    const modeMax = Math.max(1, ...modeData[mode].map((d) => d.studied));
+    modeData[mode].forEach((d) => {
+      const w = modeMax > 0 ? Math.max(2, (d.studied / modeMax) * 100) : 2;
+      const dayAcc = d.studied ? Math.round((d.correct / d.studied) * 100) : null;
+      const label = d.day.slice(5); // MM-DD
+      html += `
+        <div class="analytics-day-row">
+          <span class="analytics-day-label">${label}</span>
+          <div class="analytics-day-track">
+            <div class="analytics-day-fill" style="width:${d.studied ? w : 0}%;background:${modeColors[mode]}"></div>
+          </div>
+          <span class="analytics-day-stat">${d.studied ? `${d.studied} · %${dayAcc}` : "—"}</span>
+        </div>`;
+    });
+
+    html += `</div></section>`;
+  });
+
+  html += `</div>`;
+  $("#analyticsContainer").innerHTML = html;
 }
 
 function periodStats(daysBack) {
@@ -1588,12 +1655,7 @@ function wordItemTemplate(item) {
 }
 
 function modeLabel(mode) {
-  return {
-    due: "Due",
-    new: "New",
-    difficult: "Difficult",
-    all: "All",
-  }[mode] || mode;
+  return { all: "Tüm Kelimeler", difficult: "Yanlış Yapılanlar" }[mode] || mode;
 }
 
 function statusLabel(status) {

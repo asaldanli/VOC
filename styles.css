@@ -693,6 +693,69 @@ h2 {
   width: 100%;
 }
 
+/* Mode bar for quiz and matching sections */
+.mode-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.mode-bar .mode-button {
+  width: auto;
+  flex: 1;
+  justify-content: center;
+}
+
+/* ── Analytics redesign ─────────────────────── */
+.analytics-15-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.analytics-mode-panel .panel-heading h2 {
+  font-size: 1rem;
+}
+
+.analytics-day-bars {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.analytics-day-row {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 52px 1fr 80px;
+}
+
+.analytics-day-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.analytics-day-track {
+  background: var(--line);
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.analytics-day-fill {
+  border-radius: 999px;
+  height: 100%;
+  min-width: 0;
+  transition: width 300ms ease;
+}
+
+.analytics-day-stat {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: right;
+}
+
 .flashcard {
   cursor: grab;
   min-height: 430px;

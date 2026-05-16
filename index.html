@@ -12,7 +12,6 @@
   </head>
   <body>
     <section class="login-screen" id="loginScreen">
-      <!-- Step 1: User Selection -->
       <div class="login-card user-selection-card" id="userSelectionStep">
         <div class="login-brand">
           <img src="logo.svg" alt="" class="brand-mark">
@@ -47,23 +46,12 @@
           </button>
         </div>
       </div>
-
-      <!-- Step 2: Password Entry -->
-      <form class="login-card password-step-card hidden" id="passwordStep">
-        <button class="back-button" type="button" id="backToUsers">← Geri</button>
-        <div class="login-brand">
-          <img src="logo.svg" alt="" class="brand-mark">
-          <div>
-            <p class="eyebrow">Hoş geldiniz</p>
-            <h2 id="passwordStepName" class="password-step-username">—</h2>
-          </div>
-        </div>
-        <label>
-          Şifre
-          <input id="loginPasswordInput" type="password" autocomplete="current-password" required>
-        </label>
-        <button type="submit">Giriş Yap</button>
-        <p id="loginPasswordMessage" class="status-line"></p>
+      <!-- password step kept in DOM for JS compatibility but never shown -->
+      <form class="login-card hidden" id="passwordStep" style="display:none">
+        <input id="loginPasswordInput" type="password">
+        <p id="loginPasswordMessage"></p>
+        <button id="backToUsers" type="button"></button>
+        <h2 id="passwordStepName"></h2>
       </form>
     </section>
 
@@ -182,10 +170,8 @@
       <section id="flashcards" class="view">
         <div class="study-layout">
           <aside class="study-rail">
-            <button class="mode-button active" data-card-mode="due" type="button">Due</button>
-            <button class="mode-button" data-card-mode="new" type="button">New</button>
-            <button class="mode-button" data-card-mode="difficult" type="button">Difficult</button>
-            <button class="mode-button" data-card-mode="all" type="button">All</button>
+            <button class="mode-button active" data-section="cards" data-mode="all" type="button">Tüm Kelimeler</button>
+            <button class="mode-button" data-section="cards" data-mode="difficult" type="button">Yanlış Yapılanlar</button>
           </aside>
           <article class="flashcard" id="flashcard">
             <div class="swipe-hint left">Bilmedim</div>
@@ -203,6 +189,10 @@
       </section>
 
       <section id="quiz" class="view">
+        <div class="mode-bar">
+          <button class="mode-button active" data-section="quiz" data-mode="all" type="button">Tüm Kelimeler</button>
+          <button class="mode-button" data-section="quiz" data-mode="difficult" type="button">Yanlış Yapılanlar</button>
+        </div>
         <section class="panel quiz-panel">
           <div class="panel-heading">
             <div>
@@ -217,6 +207,10 @@
       </section>
 
       <section id="matching" class="view">
+        <div class="mode-bar">
+          <button class="mode-button active" data-section="match" data-mode="all" type="button">Tüm Kelimeler</button>
+          <button class="mode-button" data-section="match" data-mode="difficult" type="button">Yanlış Yapılanlar</button>
+        </div>
         <section class="panel">
           <div class="panel-heading">
             <div>
@@ -234,53 +228,7 @@
       </section>
 
       <section id="analytics" class="view">
-        <div class="analytics-grid">
-          <article class="metric-card accent-teal">
-            <span>Kartlar</span>
-            <strong id="cardAccuracy">0%</strong>
-          </article>
-          <article class="metric-card accent-blue">
-            <span>Quiz</span>
-            <strong id="quizAccuracy">0%</strong>
-          </article>
-          <article class="metric-card accent-yellow">
-            <span>E&#351;le&#351;tir</span>
-            <strong id="matchAccuracy">0%</strong>
-          </article>
-          <article class="metric-card accent-red">
-            <span>Toplam</span>
-            <strong id="totalAccuracy">0%</strong>
-          </article>
-        </div>
-        <div class="panel-grid analytics-panels">
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <span class="section-kicker">Daily</span>
-                <h2>Son 7 G&#252;n</h2>
-              </div>
-            </div>
-            <div id="dailyAnalysisBars" class="analysis-bars"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <span class="section-kicker">Monthly</span>
-                <h2>Son 6 Ay</h2>
-              </div>
-            </div>
-            <div id="monthlyAnalysisBars" class="analysis-bars"></div>
-          </section>
-        </div>
-        <section class="panel">
-          <div class="panel-heading">
-            <div>
-              <span class="section-kicker">Summary</span>
-              <h2>&#214;&#287;renme Durumu</h2>
-            </div>
-          </div>
-          <div id="learningSummary" class="summary-grid"></div>
-        </section>
+        <div id="analyticsContainer"></div>
       </section>
 
       <section id="words" class="view">
