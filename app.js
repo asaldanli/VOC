@@ -91,23 +91,11 @@ document.addEventListener("DOMContentLoaded", () => {
   requestPersistentStorage();
   applyTheme();
 
-  const savedUser = sessionStorage.getItem("yds-vocab-auth");
-  if (savedUser && USERS[savedUser]) {
-    // Already logged in: restore session
-    AUTH = { username: USERS[savedUser].username, password: USERS[savedUser].password };
-    loadUserData();
-    restoreStudyDataIfNeeded();
-    $("#loginScreen").classList.add("hidden");
-    document.body.classList.remove("is-locked");
-    updateSyncStatus();
-    renderAll();
-    syncFromCloud().then(renderAll).catch(() => {});
-  } else {
-    // Not logged in: show user selection
-    showUserSelection();
-    applyAuthState();
-    renderAll();
-  }
+  // Always start with user selection — no auto-login
+  sessionStorage.removeItem("yds-vocab-auth");
+  showUserSelection();
+  applyAuthState();
+  renderAll();
 });
 
 function loadUserData() {
