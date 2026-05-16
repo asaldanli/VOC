@@ -99,6 +99,12 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function loadUserData() {
+  // Reset Firebase connection so it re-initializes with the new user's path
+  detachCloudListener();
+  cloudDb = null;
+  cloudRef = null;
+  cloudListenerAttached = false;
+
   // Migrate legacy keys for saldanli if new keys are empty
   if (AUTH.username === "saldanli") {
     if (!localStorage.getItem(storageKey("vocabulary")) && localStorage.getItem(LEGACY_STORAGE_KEYS.vocabulary)) {
@@ -366,7 +372,8 @@ function hasStudyData() {
 function getCloudConfig() {
   const config = window.KELIME_STUDIO_CLOUD || {};
   const firebaseConfig = config.firebaseConfig || DEFAULT_FIREBASE_CONFIG;
-  const databasePath = String(config.databasePath || USERS[AUTH.username]?.databasePath || `yds-vocabulary/${AUTH.username}`).replace(/^\/+|\/+$/g, "");
+  // Always use the logged-in user's own path — ignore config.databasePath
+  const databasePath = (USERS[AUTH.username]?.databasePath || `yds-vocabulary/${AUTH.username}`).replace(/^\/+|\/+$/g, "");
   const hasFirebase = typeof window.firebase !== "undefined" && firebaseConfig;
   const isConfigured = Boolean(
     hasFirebase &&
@@ -380,8 +387,8 @@ function getCloudConfig() {
 function initCloud() {
   const config = getCloudConfig();
   if (!config.isConfigured) return null;
-  if (cloudDb && cloudRef) return cloudDb;
 
+  // Always re-create cloudRef so it points to the current user's path
   try {
     let app;
     try {
