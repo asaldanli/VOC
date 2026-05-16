@@ -12,22 +12,58 @@
   </head>
   <body>
     <section class="login-screen" id="loginScreen">
-      <form class="login-card" id="loginForm">
-        <img src="logo.svg" alt="" class="brand-mark">
-        <div>
-          <p class="eyebrow">Private Access</p>
-          <h1>Kelime Studio</h1>
+      <!-- Step 1: User Selection -->
+      <div class="login-card user-selection-card" id="userSelectionStep">
+        <div class="login-brand">
+          <img src="logo.svg" alt="" class="brand-mark">
+          <div>
+            <p class="eyebrow">Private Access</p>
+            <h1>Kelime Studio</h1>
+          </div>
+        </div>
+        <p class="login-subtitle">Kim çalışıyor?</p>
+        <div class="user-cards-row">
+          <button class="user-card" type="button" data-username="saldanli">
+            <span class="user-avatar user-avatar--male">
+              <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <circle cx="40" cy="40" r="40" fill="#315fbc"/>
+                <circle cx="40" cy="30" r="14" fill="#ffffff"/>
+                <ellipse cx="40" cy="72" rx="22" ry="16" fill="#ffffff"/>
+                <rect x="33" y="44" width="14" height="10" rx="4" fill="#ffffff"/>
+              </svg>
+            </span>
+            <span class="user-card-name">Arif<br>SALDANLI</span>
+          </button>
+          <button class="user-card" type="button" data-username="sevcan">
+            <span class="user-avatar user-avatar--female">
+              <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <circle cx="40" cy="40" r="40" fill="#20a891"/>
+                <circle cx="40" cy="29" r="14" fill="#ffffff"/>
+                <path d="M18 76 C18 58 62 58 62 76" fill="#ffffff"/>
+                <path d="M26 22 Q40 10 54 22 Q54 12 40 10 Q26 12 26 22Z" fill="#ffffff" opacity="0.7"/>
+              </svg>
+            </span>
+            <span class="user-card-name">Sevcan<br>YILMAZ SALDANLI</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: Password Entry -->
+      <form class="login-card password-step-card hidden" id="passwordStep">
+        <button class="back-button" type="button" id="backToUsers">← Geri</button>
+        <div class="login-brand">
+          <img src="logo.svg" alt="" class="brand-mark">
+          <div>
+            <p class="eyebrow">Hoş geldiniz</p>
+            <h2 id="passwordStepName" class="password-step-username">—</h2>
+          </div>
         </div>
         <label>
-          Kullan&#305;c&#305; ad&#305;
-          <input id="usernameInput" type="text" autocomplete="username" required>
+          Şifre
+          <input id="loginPasswordInput" type="password" autocomplete="current-password" required>
         </label>
-        <label>
-          &#350;ifre
-          <input id="passwordInput" type="password" autocomplete="current-password" required>
-        </label>
-        <button type="submit">Giri&#351; Yap</button>
-        <p id="loginMessage" class="status-line"></p>
+        <button type="submit">Giriş Yap</button>
+        <p id="loginPasswordMessage" class="status-line"></p>
       </form>
     </section>
 
@@ -48,16 +84,24 @@
           <button class="ghost-button focus-button" id="focusButton" type="button">&#9889; Zor Odak</button>
           <button class="danger-button" id="resetButton" type="button">S&#305;f&#305;rla</button>
         </div>
+        <!-- Mobile: compact right side -->
+        <div class="topbar-mobile">
+          <span class="sync-status sync-status-mobile" id="syncStatusMobile">&#9679;</span>
+          <button class="hamburger-button" id="hamburgerButton" type="button" aria-label="Men&#252;" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
       </header>
-      <!-- Mobile floating menu button + dropdown -->
-      <button class="fab-menu-btn" id="hamburgerButton" type="button" aria-label="Men&#252;" aria-expanded="false">&#8943;</button>
-      <div class="fab-menu hidden" id="mobileMenu">
-        <span class="fab-sync" id="syncStatusMobile"></span>
-        <button class="ghost-button" id="themeButtonM" type="button">&#9788; Tema</button>
-        <button class="ghost-button focus-button" id="focusButtonM" type="button">&#9889; Zor Odak</button>
-        <button class="ghost-button" id="exportButtonM" type="button">&#8659; D&#305;&#351;a Aktar</button>
-        <button class="ghost-button" id="logoutButtonM" type="button">&#8594; &#199;&#305;k&#305;&#351;</button>
-        <button class="danger-button" id="resetButtonM" type="button">S&#305;f&#305;rla</button>
+      <!-- Mobile slide-down menu -->
+      <div class="mobile-menu hidden" id="mobileMenu">
+        <div class="mobile-menu-inner">
+          <button class="ghost-button" id="importButtonM" type="button">&#8679; Veri Y&#252;kle</button>
+          <button class="ghost-button" id="themeButtonM" type="button">&#9788; Gece/G&#252;nd&#252;z Modu</button>
+          <button class="ghost-button focus-button" id="focusButtonM" type="button">&#9889; Zor Odak</button>
+          <button class="ghost-button" id="exportButtonM" type="button">&#8659; D&#305;&#351;a Aktar</button>
+          <button class="ghost-button" id="logoutButtonM" type="button">&#8594; &#199;&#305;k&#305;&#351;</button>
+          <button class="danger-button" id="resetButtonM" type="button">&#128465; S&#305;f&#305;rla</button>
+        </div>
       </div>
 
       <details class="import-band">
@@ -190,7 +234,6 @@
       </section>
 
       <section id="analytics" class="view">
-        <!-- Top accuracy cards -->
         <div class="analytics-grid">
           <article class="metric-card accent-teal">
             <span>Kartlar</span>
@@ -209,27 +252,26 @@
             <strong id="totalAccuracy">0%</strong>
           </article>
         </div>
-
-        <!-- Period selector -->
-        <div class="period-tabs">
-          <button class="period-tab active" data-period="daily" type="button">Günlük</button>
-          <button class="period-tab" data-period="weekly" type="button">Haftalık</button>
-          <button class="period-tab" data-period="monthly" type="button">Aylık</button>
+        <div class="panel-grid analytics-panels">
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <span class="section-kicker">Daily</span>
+                <h2>Son 7 G&#252;n</h2>
+              </div>
+            </div>
+            <div id="dailyAnalysisBars" class="analysis-bars"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <span class="section-kicker">Monthly</span>
+                <h2>Son 6 Ay</h2>
+              </div>
+            </div>
+            <div id="monthlyAnalysisBars" class="analysis-bars"></div>
+          </section>
         </div>
-
-        <!-- Detail table -->
-        <section class="panel analytics-detail-panel">
-          <div class="analytics-detail-header">
-            <span class="adh-label">Dönem</span>
-            <span class="adh-mode accent-teal">&#9632; Kartlar</span>
-            <span class="adh-mode accent-blue">&#9632; Quiz</span>
-            <span class="adh-mode accent-yellow">&#9632; E&#351;le&#351;tir</span>
-            <span class="adh-total">Toplam</span>
-          </div>
-          <div id="analyticsDetailRows" class="analytics-detail-rows"></div>
-        </section>
-
-        <!-- Learning summary -->
         <section class="panel">
           <div class="panel-heading">
             <div>

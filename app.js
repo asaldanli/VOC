@@ -1,16 +1,43 @@
-const STORAGE_KEYS = {
+function storageKey(name) {
+  const prefix = AUTH.username || "saldanli";
+  const map = {
+    vocabulary: `yds-vocab-items-${prefix}`,
+    progress: `yds-vocab-progress-${prefix}`,
+    daily: `yds-vocab-daily-${prefix}`,
+    snapshot: `yds-vocab-study-snapshot-${prefix}`,
+    auth: `yds-vocab-auth`,          // global: who is logged in
+    theme: `yds-vocab-theme`,         // global: theme preference
+  };
+  return map[name];
+}
+
+// Legacy key support (migrate old data if found)
+const LEGACY_STORAGE_KEYS = {
   vocabulary: "yds-vocab-items",
   progress: "yds-vocab-progress",
   daily: "yds-vocab-daily",
   snapshot: "yds-vocab-study-snapshot",
-  auth: "yds-vocab-auth",
-  theme: "yds-vocab-theme",
 };
 
-const AUTH = {
-  username: "saldanli",
-  password: "21542154",
+const USERS = {
+  saldanli: {
+    username: "saldanli",
+    displayName: "Arif SALDANLI",
+    password: "21542154",
+    gender: "male",
+    databasePath: "yds-vocabulary/saldanli",
+  },
+  sevcan: {
+    username: "sevcan",
+    displayName: "Sevcan YILMAZ SALDANLI",
+    password: "031212",
+    gender: "female",
+    databasePath: "yds-vocabulary/sevcan",
+  },
 };
+
+// AUTH alias — set dynamically when a user logs in
+let AUTH = { username: "saldanli", password: "21542154" };
 
 const DEFAULT_FIREBASE_CONFIG = {
   apiKey: "AIzaSyC48zpV-bhFVoP6cNx9IGunljVk7_xyHAw",
@@ -32,12 +59,15 @@ const sampleCsv = `No,S\u00f6zc\u00fck,T\u00fcrk\u00e7e Kar\u015f\u0131l\u0131\u
 7,inevitable,ka\u00e7\u0131n\u0131lmaz
 8,retain,ak\u0131lda tutmak`;
 
-let vocabulary = loadJson(STORAGE_KEYS.vocabulary, []);
-let progress = loadJson(STORAGE_KEYS.progress, {});
-let daily = loadJson(STORAGE_KEYS.daily, {});
+let vocabulary = [];
+let progress = {};
+let daily = {};
 let activeView = "dashboard";
 let cardMode = "due";
 let currentCard = null;
+// Session buffer: prevents recently-shown cards from appearing again too soon
+let recentCardIds = [];
+const RECENT_BUFFER_SIZE = 7;
 let currentQuiz = null;
 let selectedMatchWord = null;
 let selectedMatchMeaning = null;
@@ -46,7 +76,6 @@ let draggedMatchId = null;
 let currentMatchIds = new Set();
 let cardPointer = null;
 let cloudSaveTimer = null;
-let activeAnalyticsPeriod = "daily";
 let cloudSyncInProgress = false;
 let cloudDb = null;
 let cloudRef = null;
@@ -60,14 +89,36 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
   requestPersistentStorage();
-  restoreStudyDataIfNeeded();
   applyTheme();
-  applyAuthState();
-  renderAll();
-  if (localStorage.getItem(STORAGE_KEYS.auth) === "true") {
+  // Restore logged-in user if any
+  const savedUser = localStorage.getItem("yds-vocab-auth");
+  if (savedUser && USERS[savedUser]) {
+    AUTH = { username: USERS[savedUser].username, password: USERS[savedUser].password };
+    loadUserData();
+    restoreStudyDataIfNeeded();
+    applyAuthState();
+    renderAll();
     syncFromCloud().then(renderAll);
+  } else {
+    applyAuthState();
+    renderAll();
   }
 });
+
+function loadUserData() {
+  // Migrate legacy keys for saldanli if new keys are empty
+  if (AUTH.username === "saldanli") {
+    if (!localStorage.getItem(storageKey("vocabulary")) && localStorage.getItem(LEGACY_STORAGE_KEYS.vocabulary)) {
+      localStorage.setItem(storageKey("vocabulary"), localStorage.getItem(LEGACY_STORAGE_KEYS.vocabulary));
+      localStorage.setItem(storageKey("progress"), localStorage.getItem(LEGACY_STORAGE_KEYS.progress) || "{}");
+      localStorage.setItem(storageKey("daily"), localStorage.getItem(LEGACY_STORAGE_KEYS.daily) || "{}");
+    }
+  }
+  vocabulary = loadJson(storageKey("vocabulary"), []);
+  progress = loadJson(storageKey("progress"), {});
+  daily = loadJson(storageKey("daily"), {});
+  recentCardIds = [];
+}
 
 async function requestPersistentStorage() {
   if (!navigator.storage?.persist) return;
@@ -83,7 +134,12 @@ window.addEventListener("pagehide", () => {
 });
 
 function bindEvents() {
-  $("#loginForm").addEventListener("submit", handleLogin);
+  // User selection login
+  $$(".user-card").forEach((card) => {
+    card.addEventListener("click", () => selectUser(card.dataset.username));
+  });
+  $("#loginPasswordForm").addEventListener("submit", handlePasswordSubmit);
+  $("#backToUsers").addEventListener("click", showUserSelection);
   // Hamburger menu
   $("#hamburgerButton").addEventListener("click", toggleMobileMenu);
   document.addEventListener("click", closeMobileMenuOnOutsideClick);
@@ -145,56 +201,87 @@ function bindEvents() {
   });
   $("#nextQuizButton").addEventListener("click", nextQuiz);
   $("#newMatchButton").addEventListener("click", newMatchSet);
-  $$(".period-tab").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      activeAnalyticsPeriod = btn.dataset.period;
-      $$(".period-tab").forEach((b) => b.classList.toggle("active", b === btn));
-      renderAnalyticsDetail();
-    });
-  });
   $("#searchInput").addEventListener("input", renderWords);
   $("#statusFilter").addEventListener("change", renderWords);
   document.addEventListener("keydown", handleKeyboardShortcuts);
 }
 
-async function handleLogin(event) {
-  event.preventDefault();
-  const username = $("#usernameInput").value.trim();
-  const password = $("#passwordInput").value;
-
-  if (username === AUTH.username && password === AUTH.password) {
-    localStorage.setItem(STORAGE_KEYS.auth, "true");
-    $("#loginMessage").textContent = "";
-    await syncFromCloud();
-    applyAuthState();
-    renderAll();
-    return;
+async function handleLogin(selectedUsername, password) {
+  const user = USERS[selectedUsername];
+  if (!user || password !== user.password) {
+    return false;
   }
 
-  $("#loginMessage").textContent = "Kullanici adi veya sifre hatali.";
+  AUTH = { username: user.username, password: user.password };
+  localStorage.setItem("yds-vocab-auth", user.username);
+  loadUserData();
+  restoreStudyDataIfNeeded();
+  await syncFromCloud();
+  applyAuthState();
+  renderAll();
+  return true;
 }
 
 function logout() {
   downloadProgressBackup("logout-backup");
-  localStorage.removeItem(STORAGE_KEYS.auth);
+  localStorage.removeItem("yds-vocab-auth");
+  vocabulary = [];
+  progress = {};
+  daily = {};
+  recentCardIds = [];
   applyAuthState();
 }
 
 function applyAuthState() {
-  const isLoggedIn = localStorage.getItem(STORAGE_KEYS.auth) === "true";
+  const isLoggedIn = Boolean(localStorage.getItem("yds-vocab-auth"));
   $("#loginScreen").classList.toggle("hidden", isLoggedIn);
   document.body.classList.toggle("is-locked", !isLoggedIn);
+  if (!isLoggedIn) showUserSelection();
   updateSyncStatus();
+}
+
+// ── Multi-user login UI ──────────────────────────────────
+let pendingLoginUsername = null;
+
+function showUserSelection() {
+  $("#userSelectionStep").classList.remove("hidden");
+  $("#passwordStep").classList.add("hidden");
+  $("#loginPasswordInput").value = "";
+  $("#loginPasswordMessage").textContent = "";
+  pendingLoginUsername = null;
+}
+
+function selectUser(username) {
+  const user = USERS[username];
+  if (!user) return;
+  pendingLoginUsername = username;
+  // Populate password step
+  $("#passwordStepName").textContent = user.displayName;
+  $("#userSelectionStep").classList.add("hidden");
+  $("#passwordStep").classList.remove("hidden");
+  $("#loginPasswordInput").focus();
+}
+
+async function handlePasswordSubmit(event) {
+  event.preventDefault();
+  if (!pendingLoginUsername) return;
+  const password = $("#loginPasswordInput").value;
+  const ok = await handleLogin(pendingLoginUsername, password);
+  if (!ok) {
+    $("#loginPasswordMessage").textContent = "Şifre hatalı.";
+    $("#loginPasswordInput").value = "";
+    $("#loginPasswordInput").focus();
+  }
 }
 
 function toggleTheme() {
   const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  localStorage.setItem(STORAGE_KEYS.theme, nextTheme);
+  localStorage.setItem(storageKey("theme"), nextTheme);
   applyTheme();
 }
 
 function applyTheme() {
-  const savedTheme = localStorage.getItem(STORAGE_KEYS.theme);
+  const savedTheme = localStorage.getItem(storageKey("theme"));
   const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
   const theme = savedTheme || (prefersDark ? "dark" : "light");
   document.documentElement.dataset.theme = theme;
@@ -244,10 +331,10 @@ function saveJson(key, value) {
 function saveStudyData(options = {}) {
   const shouldSync = options.sync !== false;
   migrateDailyStats();
-  saveJson(STORAGE_KEYS.vocabulary, vocabulary);
-  saveJson(STORAGE_KEYS.progress, progress);
-  saveJson(STORAGE_KEYS.daily, daily);
-  saveJson(STORAGE_KEYS.snapshot, {
+  saveJson(storageKey("vocabulary"), vocabulary);
+  saveJson(storageKey("progress"), progress);
+  saveJson(storageKey("daily"), daily);
+  saveJson(storageKey("snapshot"), {
     savedAt: new Date().toISOString(),
     vocabulary,
     progress,
@@ -276,7 +363,7 @@ function hasStudyData() {
 function getCloudConfig() {
   const config = window.KELIME_STUDIO_CLOUD || {};
   const firebaseConfig = config.firebaseConfig || DEFAULT_FIREBASE_CONFIG;
-  const databasePath = String(config.databasePath || `yds-vocabulary/${AUTH.username}`).replace(/^\/+|\/+$/g, "");
+  const databasePath = String(config.databasePath || USERS[AUTH.username]?.databasePath || `yds-vocabulary/${AUTH.username}`).replace(/^\/+|\/+$/g, "");
   const hasFirebase = typeof window.firebase !== "undefined" && firebaseConfig;
   const isConfigured = Boolean(
     hasFirebase &&
@@ -324,7 +411,7 @@ function updateSyncStatus(message) {
 }
 
 function queueCloudSave() {
-  if (localStorage.getItem(STORAGE_KEYS.auth) !== "true") return;
+  if (!localStorage.getItem("yds-vocab-auth")) return;
   if (!getCloudConfig().isConfigured) {
     updateSyncStatus();
     return;
@@ -360,7 +447,7 @@ async function syncFromFirebase() {
       vocabulary = hadRemoteVocab ? remotePayload.vocabulary : [];
       progress = {};
       daily = {};
-      [STORAGE_KEYS.vocabulary, STORAGE_KEYS.progress, STORAGE_KEYS.daily, STORAGE_KEYS.snapshot].forEach((k) => localStorage.removeItem(k));
+      [storageKey("vocabulary"), storageKey("progress"), storageKey("daily"), storageKey("snapshot")].forEach((k) => localStorage.removeItem(k));
       vocabulary.forEach((item) => { progress[String(item.id)] = createProgress(String(item.id)); });
       if (remotePayload.progress && Object.keys(remotePayload.progress).length) {
         Object.assign(progress, remotePayload.progress);
@@ -413,14 +500,14 @@ function attachCloudListener() {
 
     if (isReset) {
       // Reset from another device — apply completely, never merge
-      const localSnapshot = loadJson(STORAGE_KEYS.snapshot, null);
+      const localSnapshot = loadJson(storageKey("snapshot"), null);
       const resetIsNewer = !localSnapshot?.savedAt || remoteData.resetAt > localSnapshot.savedAt;
       if (!resetIsNewer) return; // already applied this reset
       lastResetAt = remoteData.resetAt;
       vocabulary = hadRemoteVocab ? remoteData.vocabulary : [];
       progress = {};
       daily = {};
-      [STORAGE_KEYS.vocabulary, STORAGE_KEYS.progress, STORAGE_KEYS.daily, STORAGE_KEYS.snapshot].forEach((k) => localStorage.removeItem(k));
+      [storageKey("vocabulary"), storageKey("progress"), storageKey("daily"), storageKey("snapshot")].forEach((k) => localStorage.removeItem(k));
       vocabulary.forEach((item) => { progress[String(item.id)] = createProgress(String(item.id)); });
       if (remoteData.progress && Object.keys(remoteData.progress).length) {
         Object.assign(progress, remoteData.progress);
@@ -446,7 +533,7 @@ function attachCloudListener() {
 
 async function saveToFirebase(options = {}) {
   const config = getCloudConfig();
-  if (!config.isConfigured || localStorage.getItem(STORAGE_KEYS.auth) !== "true") return;
+  if (!config.isConfigured || !localStorage.getItem("yds-vocab-auth")) return;
   const db = initCloud();
   if (!db || !cloudRef) return;
   updateSyncStatus("Cloud Sync: Kaydediliyor");
@@ -481,7 +568,7 @@ async function saveToCloud(options = {}) {
 }
 
 function restoreStudyDataIfNeeded() {
-  const snapshot = loadJson(STORAGE_KEYS.snapshot, null);
+  const snapshot = loadJson(storageKey("snapshot"), null);
   if (snapshot) {
     if (!vocabulary.length && Array.isArray(snapshot.vocabulary)) vocabulary = snapshot.vocabulary;
     if (!Object.keys(progress).length && snapshot.progress && typeof snapshot.progress === "object") progress = snapshot.progress;
@@ -881,7 +968,12 @@ function nextCard(forceAdvance = true) {
 
   // Exclude current card so we never show the same word twice in a row
   const candidates = currentCard ? pool.filter((item) => item.id !== currentCard.id) : pool;
-  const source = candidates.length ? candidates : pool;
+
+  // Filter out recently shown cards (session buffer) — unless the pool is very small
+  const bufferFiltered = candidates.filter((item) => !recentCardIds.includes(item.id));
+  const source = bufferFiltered.length >= Math.min(3, Math.ceil(candidates.length * 0.5))
+    ? bufferFiltered
+    : (candidates.length ? candidates : pool);
 
   // Separate into buckets: unseen (never studied) vs seen
   const unseen = source.filter((item) => !getProgress(item).lastSeenAt);
@@ -896,17 +988,26 @@ function nextCard(forceAdvance = true) {
     pickFrom = unseen;
   } else {
     // Pick from seen words weighted by weakness (low correct, long ago)
+    // Add stronger randomness so difficult words don't dominate the session
     const scored = seen.map((item) => {
       const p = getProgress(item);
       const daysSinceSeen = (Date.now() - new Date(p.lastSeenAt).getTime()) / 86400000;
-      const score = (p.correctCount * 3) - Math.min(daysSinceSeen, 14) + (Math.random() * 3);
+      // Difficult words still get a slight penalty but not enough to dominate
+      const difficultyPenalty = p.status === "difficult" ? 2 : 0;
+      const score = (p.correctCount * 3) - Math.min(daysSinceSeen, 14) + difficultyPenalty + (Math.random() * 6);
       return { item, score };
     });
     scored.sort((a, b) => a.score - b.score);
-    pickFrom = scored.slice(0, Math.max(1, Math.ceil(scored.length * 0.4))).map((s) => s.item);
+    // Pick from the bottom 60% (weaker words) for more variety
+    pickFrom = scored.slice(0, Math.max(1, Math.ceil(scored.length * 0.6))).map((s) => s.item);
   }
 
   currentCard = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+
+  // Update session buffer
+  recentCardIds.push(currentCard.id);
+  if (recentCardIds.length > RECENT_BUFFER_SIZE) recentCardIds.shift();
+
   updateCard(currentCard);
 }
 
@@ -1280,6 +1381,7 @@ function renderWeeklyBars() {
 function renderAnalytics() {
   if (!$("#cardAccuracy")) return;
 
+  const month = periodStats(29);
   const allTotals = periodStats(3650);
   const modeTotals = modeStats(3650);
 
@@ -1288,127 +1390,9 @@ function renderAnalytics() {
   $("#matchAccuracy").textContent = `${accuracy(modeTotals.matching)}%`;
   $("#totalAccuracy").textContent = `${accuracy(allTotals)}%`;
 
-  renderAnalyticsDetail();
-  renderLearningSummary(allTotals, periodStats(29), modeTotals);
-}
-
-function renderAnalyticsDetail() {
-  const container = $("#analyticsDetailRows");
-  if (!container) return;
-
-  const rows = buildAnalyticsPeriods(activeAnalyticsPeriod);
-  if (!rows.length) { container.innerHTML = `<div class="adr-label" style="padding:18px">Veri yok.</div>`; return; }
-
-  // Max studied across all rows (for bar scaling)
-  const maxStudied = Math.max(1, ...rows.map((r) => r.total.studiedCount));
-
-  container.innerHTML = rows.map((row) => {
-    const pct = accuracy(row.total);
-    const isEmpty = row.total.studiedCount === 0;
-    return `
-      <div class="analytics-detail-row${isEmpty ? " empty-row" : ""}">
-        <div class="adr-label">
-          ${escapeHtml(row.primary)}
-          ${row.secondary ? `<small>${escapeHtml(row.secondary)}</small>` : ""}
-        </div>
-        ${modeCell(row.modes.flashcards, "var(--teal)", maxStudied)}
-        ${modeCell(row.modes.quiz, "var(--blue)", maxStudied)}
-        ${modeCell(row.modes.matching, "var(--yellow)", maxStudied)}
-        <div class="adr-total">
-          <span class="adr-total-count">${row.total.studiedCount}</span>
-          <span class="adr-total-pct">${isEmpty ? "—" : pct + "%"}</span>
-        </div>
-      </div>`;
-  }).join("");
-}
-
-function modeCell(stats, color, maxStudied) {
-  const pct = accuracy(stats);
-  const barWidth = maxStudied > 0 ? Math.max(0, (stats.studiedCount / maxStudied) * 100) : 0;
-  return `
-    <div class="adr-mode">
-      <span class="adr-mode-count">${stats.studiedCount || 0}</span>
-      <span class="adr-mode-pct">${stats.studiedCount ? pct + "%" : "—"}</span>
-      <div class="adr-mode-bar">
-        <div class="adr-mode-bar-fill" style="width:${barWidth}%;background:${color}"></div>
-      </div>
-    </div>`;
-}
-
-function buildAnalyticsPeriods(period) {
-  if (period === "daily") {
-    // Last 30 days, newest first
-    return Array.from({ length: 30 }, (_, i) => {
-      const key = todayKey(-i);
-      const stats = normalizeDailyStats(daily[key], key);
-      const d = new Date(key);
-      return {
-        primary: key.slice(5).replace("-", "/"),
-        secondary: d.toLocaleDateString("tr-TR", { weekday: "short" }),
-        total: { studiedCount: stats.studiedCount, correctCount: stats.correctCount, wrongCount: stats.wrongCount },
-        modes: stats.modes,
-      };
-    });
-  }
-
-  if (period === "weekly") {
-    // Last 16 weeks, newest first
-    return Array.from({ length: 16 }, (_, i) => {
-      const weekStart = new Date();
-      weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1 - i * 7); // Monday
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      const days = Array.from({ length: 7 }, (_, d) => {
-        const day = new Date(weekStart);
-        day.setDate(day.getDate() + d);
-        return formatDateKey(day);
-      });
-      const modes = emptyModeStats();
-      let totalStudied = 0, totalCorrect = 0, totalWrong = 0;
-      days.forEach((key) => {
-        const s = normalizeDailyStats(daily[key], key);
-        totalStudied += s.studiedCount; totalCorrect += s.correctCount; totalWrong += s.wrongCount;
-        Object.keys(modes).forEach((m) => {
-          modes[m].studiedCount += s.modes[m].studiedCount;
-          modes[m].correctCount += s.modes[m].correctCount;
-          modes[m].wrongCount   += s.modes[m].wrongCount;
-        });
-      });
-      const startStr = formatDateKey(weekStart).slice(5).replace("-", "/");
-      const endStr   = formatDateKey(weekEnd).slice(5).replace("-", "/");
-      return {
-        primary: `${startStr}–${endStr}`,
-        secondary: `${i === 0 ? "Bu hafta" : i + ". hafta önce"}`,
-        total: { studiedCount: totalStudied, correctCount: totalCorrect, wrongCount: totalWrong },
-        modes,
-      };
-    });
-  }
-
-  // monthly — last 12 months, newest first
-  return Array.from({ length: 12 }, (_, i) => {
-    const now = new Date();
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const modes = emptyModeStats();
-    let totalStudied = 0, totalCorrect = 0, totalWrong = 0;
-    Object.entries(daily).filter(([k]) => k.startsWith(monthKey)).forEach(([, item]) => {
-      const s = normalizeDailyStats(item);
-      totalStudied += s.studiedCount; totalCorrect += s.correctCount; totalWrong += s.wrongCount;
-      Object.keys(modes).forEach((m) => {
-        modes[m].studiedCount += s.modes[m].studiedCount;
-        modes[m].correctCount += s.modes[m].correctCount;
-        modes[m].wrongCount   += s.modes[m].wrongCount;
-      });
-    });
-    const label = d.toLocaleDateString("tr-TR", { year: "numeric", month: "short" });
-    return {
-      primary: label,
-      secondary: i === 0 ? "Bu ay" : "",
-      total: { studiedCount: totalStudied, correctCount: totalCorrect, wrongCount: totalWrong },
-      modes,
-    };
-  });
+  renderDailyAnalysisBars();
+  renderMonthlyAnalysisBars();
+  renderLearningSummary(allTotals, month, modeTotals);
 }
 
 function periodStats(daysBack) {
@@ -1427,15 +1411,61 @@ function accuracy(stats) {
   return answered ? Math.round((stats.correctCount / answered) * 100) : 0;
 }
 
+function renderDailyAnalysisBars() {
+  const days = Array.from({ length: 7 }, (_, index) => todayKey(index - 6));
+  const max = Math.max(1, ...days.map((day) => normalizeDailyStats(daily[day], day).studiedCount || 0));
+  $("#dailyAnalysisBars").innerHTML = days.map((day) => {
+    const item = normalizeDailyStats(daily[day], day);
+    const width = Math.max(4, (item.studiedCount / max) * 100);
+    return analysisRowTemplate(day.slice(5), item, width);
+  }).join("");
+}
 
+function renderMonthlyAnalysisBars() {
+  const months = lastMonths(6);
+  const monthStats = months.map((month) => ({
+    label: month,
+    ...statsForMonth(month),
+  }));
+  const max = Math.max(1, ...monthStats.map((item) => item.studiedCount));
+  $("#monthlyAnalysisBars").innerHTML = monthStats.map((item) => (
+    analysisRowTemplate(item.label, item, Math.max(4, (item.studiedCount / max) * 100))
+  )).join("");
+}
 
+function analysisRowTemplate(label, stats, width) {
+  return `
+    <div class="analysis-row">
+      <div>
+        <strong>${escapeHtml(label)}</strong>
+        <span>${stats.studiedCount || 0} kart / ${accuracy(stats)}% dogru</span>
+      </div>
+      <div class="analysis-track">
+        <div class="analysis-fill" style="width:${width}%"></div>
+      </div>
+    </div>
+  `;
+}
 
+function lastMonths(count) {
+  const now = new Date();
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - (count - 1 - index), 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  });
+}
 
-
-
-
-
-
+function statsForMonth(monthKey) {
+  return Object.entries(daily)
+    .filter(([date]) => date.startsWith(monthKey))
+    .reduce((total, [, item]) => {
+      const stats = normalizeDailyStats(item);
+      total.studiedCount += stats.studiedCount || 0;
+      total.correctCount += stats.correctCount || 0;
+      total.wrongCount += stats.wrongCount || 0;
+      return total;
+    }, { studiedCount: 0, correctCount: 0, wrongCount: 0 });
+}
 
 function modeStats(daysBack) {
   const days = Array.from({ length: daysBack + 1 }, (_, index) => todayKey(index - daysBack));
@@ -1589,7 +1619,7 @@ function handleResetProgressOnly() {
   downloadProgressBackup("before-progress-reset");
   progress = {};
   daily = {};
-  [STORAGE_KEYS.progress, STORAGE_KEYS.daily, STORAGE_KEYS.snapshot].forEach((key) => localStorage.removeItem(key));
+  [storageKey("progress"), storageKey("daily"), storageKey("snapshot")].forEach((key) => localStorage.removeItem(key));
   vocabulary.forEach((item) => {
     progress[String(item.id)] = createProgress(String(item.id));
   });
@@ -1619,10 +1649,10 @@ function handleResetEverything() {
   progress = {};
   daily = {};
   [
-    STORAGE_KEYS.vocabulary,
-    STORAGE_KEYS.progress,
-    STORAGE_KEYS.daily,
-    STORAGE_KEYS.snapshot,
+    storageKey("vocabulary"),
+    storageKey("progress"),
+    storageKey("daily"),
+    storageKey("snapshot"),
   ].forEach((key) => localStorage.removeItem(key));
   detachCloudListener();
   saveStudyData({ sync: false });
