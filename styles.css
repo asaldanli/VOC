@@ -1144,9 +1144,19 @@ h2 {
   .panel-grid,
   .study-layout,
   .option-grid,
-  .match-board,
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* Eşleştirme: mobilde 2 sütun koru, kartları küçült */
+  .match-board {
+    gap: 8px;
+  }
+
+  .match-card {
+    font-size: 0.82rem;
+    min-height: 52px;
+    padding: 0 8px;
   }
 
   .panel-heading {

@@ -108,6 +108,7 @@ function loadUserData() {
   cloudDb = null;
   cloudRef = null;
   cloudListenerAttached = false;
+  cloudSyncInProgress = false;
 
   // Migrate legacy keys for saldanli if new keys are empty
   if (AUTH.username === "saldanli") {
@@ -255,12 +256,18 @@ async function handleLogin(selectedUsername) {
 }
 
 function logout() {
+  detachCloudListener();
+  cloudDb = null;
+  cloudRef = null;
+  cloudListenerAttached = false;
+  cloudSyncInProgress = false;
   sessionStorage.removeItem("yds-vocab-auth");
   vocabulary = [];
   progress = {};
   daily = {};
   recentCardIds = [];
   wrongCooldownIds = [];
+  AUTH = { username: "", password: "" };
   applyAuthState();
   showUserSelection();
 }
@@ -508,7 +515,10 @@ async function syncFromFirebase() {
 function attachCloudListener() {
   if (cloudListenerAttached || !cloudRef) return;
   cloudListenerAttached = true;
+  const listenerOwner = AUTH.username; // hangi kullanıcı için açıldı
   cloudRef.on("value", (snap) => {
+    // Kullanıcı değişmişse bu listener'ı yok say
+    if (AUTH.username !== listenerOwner) return;
     if (applyingRemoteData) return;
     const remote = snap.val();
     const remoteData = remote?.data || (remote?.vocabulary ? remote : null);
