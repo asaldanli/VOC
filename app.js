@@ -235,12 +235,12 @@ async function handleLogin(selectedUsername, password) {
 }
 
 function logout() {
-  downloadProgressBackup("logout-backup");
   sessionStorage.removeItem("yds-vocab-auth");
   vocabulary = [];
   progress = {};
   daily = {};
   recentCardIds = [];
+  wrongCooldownIds = [];
   applyAuthState();
   showUserSelection();
 }
