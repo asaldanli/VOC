@@ -66,8 +66,10 @@ let activeView = "dashboard";
 let cardMode = "due";
 let currentCard = null;
 // Session buffer: prevents recently-shown cards from appearing again too soon
-let recentCardIds = [];
-const RECENT_BUFFER_SIZE = 7;
+let recentCardIds = [];        // genel "son görülen" tamponu
+let wrongCooldownIds = [];     // yanlış cevaplanmış kelimeler için uzun bekleme listesi
+const RECENT_BUFFER_SIZE = 20; // son 20 kart tekrar gelmesin
+const WRONG_COOLDOWN_SIZE = 40; // yanlış cevaplanan kart 40 kart sonra geri gelsin
 let currentQuiz = null;
 let selectedMatchWord = null;
 let selectedMatchMeaning = null;
@@ -117,6 +119,7 @@ function loadUserData() {
   progress = loadJson(storageKey("progress"), {});
   daily = loadJson(storageKey("daily"), {});
   recentCardIds = [];
+  wrongCooldownIds = [];
 }
 
 async function requestPersistentStorage() {
@@ -976,45 +979,58 @@ function nextCard(forceAdvance = true) {
     return;
   }
 
-  // Exclude current card so we never show the same word twice in a row
+  // Mevcut kartı dışla
   const candidates = currentCard ? pool.filter((item) => item.id !== currentCard.id) : pool;
 
-  // Filter out recently shown cards (session buffer) — unless the pool is very small
-  const bufferFiltered = candidates.filter((item) => !recentCardIds.includes(item.id));
-  const source = bufferFiltered.length >= Math.min(3, Math.ceil(candidates.length * 0.5))
-    ? bufferFiltered
-    : (candidates.length ? candidates : pool);
+  // Katman 1: Yanlış cevaplanan kartları filtrele (40 kart bekleme)
+  const withoutWrong = candidates.filter((item) => !wrongCooldownIds.includes(item.id));
 
-  // Separate into buckets: unseen (never studied) vs seen
+  // Katman 2: Son görülen kartları da filtrele (20 kart bekleme)
+  const withoutRecent = withoutWrong.filter((item) => !recentCardIds.includes(item.id));
+
+  // Havuz çok küçülürse kısıtlamaları kademeli olarak gevşet
+  let source;
+  if (withoutRecent.length >= 3) {
+    source = withoutRecent;
+  } else if (withoutWrong.length >= 3) {
+    source = withoutWrong;       // son görülen kısıtlamasını kaldır
+  } else if (candidates.length >= 1) {
+    source = candidates;          // tüm kısıtlamaları kaldır
+  } else {
+    source = pool;
+  }
+
+  // Görülmemiş (yeni) vs görülmüş kelimeler
   const unseen = source.filter((item) => !getProgress(item).lastSeenAt);
   const seen   = source.filter((item) =>  getProgress(item).lastSeenAt);
 
   let pickFrom;
   if (seen.length === 0) {
-    // All new — pick completely at random, no alphabetical bias
+    // Hepsi yeni — tamamen rastgele seç
     pickFrom = source;
   } else if (unseen.length > 0 && Math.random() < 0.25) {
-    // 25% chance: introduce a random unseen word
+    // %25 ihtimalle yeni bir kelime tanıt
     pickFrom = unseen;
   } else {
-    // Pick from seen words weighted by weakness (low correct, long ago)
-    // Add stronger randomness so difficult words don't dominate the session
+    // Zayıf kelimelerden seç ama yüksek rastgelelik ile
     const scored = seen.map((item) => {
       const p = getProgress(item);
-      const daysSinceSeen = (Date.now() - new Date(p.lastSeenAt).getTime()) / 86400000;
-      // Difficult words still get a slight penalty but not enough to dominate
-      const difficultyPenalty = p.status === "difficult" ? 2 : 0;
-      const score = (p.correctCount * 3) - Math.min(daysSinceSeen, 14) + difficultyPenalty + (Math.random() * 6);
+      const daysSinceSeen = p.lastSeenAt
+        ? (Date.now() - new Date(p.lastSeenAt).getTime()) / 86400000
+        : 999;
+      // Doğru sayısı az + uzun süredir görülmemiş = daha önce gelir
+      // Ama yüksek random faktörü çeşitliliği sağlar
+      const score = (p.correctCount * 2) - Math.min(daysSinceSeen, 30) + (Math.random() * 8);
       return { item, score };
     });
     scored.sort((a, b) => a.score - b.score);
-    // Pick from the bottom 60% (weaker words) for more variety
-    pickFrom = scored.slice(0, Math.max(1, Math.ceil(scored.length * 0.6))).map((s) => s.item);
+    // Alt %70'ten rastgele seç — çok dar havuzdan kaçın
+    pickFrom = scored.slice(0, Math.max(1, Math.ceil(scored.length * 0.7))).map((s) => s.item);
   }
 
   currentCard = pickFrom[Math.floor(Math.random() * pickFrom.length)];
 
-  // Update session buffer
+  // Genel tamponu güncelle
   recentCardIds.push(currentCard.id);
   if (recentCardIds.length > RECENT_BUFFER_SIZE) recentCardIds.shift();
 
@@ -1107,6 +1123,13 @@ function revealCard() {
 
 function answerCard(isCorrect) {
   if (!currentCard) return;
+
+  // Yanlış cevaplanan kartı uzun bekleme listesine ekle
+  if (!isCorrect) {
+    wrongCooldownIds.push(currentCard.id);
+    if (wrongCooldownIds.length > WRONG_COOLDOWN_SIZE) wrongCooldownIds.shift();
+  }
+
   recordAnswer(currentCard.id, isCorrect, "flashcards");
   renderAll();
   nextCard();
