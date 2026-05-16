@@ -138,7 +138,7 @@ function bindEvents() {
   $$(".user-card").forEach((card) => {
     card.addEventListener("click", () => selectUser(card.dataset.username));
   });
-  $("#loginPasswordForm").addEventListener("submit", handlePasswordSubmit);
+  $("#passwordStep").addEventListener("submit", handlePasswordSubmit);
   $("#backToUsers").addEventListener("click", showUserSelection);
   // Hamburger menu
   $("#hamburgerButton").addEventListener("click", toggleMobileMenu);
